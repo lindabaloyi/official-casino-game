@@ -70,7 +70,18 @@ export const rankValue = (rank) => {
  * @returns {object} The new game state.
  */
 export const handleTrail = (gameState, card) => {
-  const { playerHands, tableCards, currentPlayer } = gameState;
+  const { playerHands, tableCards, currentPlayer, round } = gameState;
+
+  // New Rule: In round 1, a player cannot trail if they own a build.
+  if (round === 1) {
+    const playerOwnsBuild = tableCards.some(
+      (c) => c.type === 'build' && c.owner === currentPlayer
+    );
+    if (playerOwnsBuild) {
+      alert("You cannot trail a card while you own a build in the first round. You must capture or build.");
+      return gameState; // Invalid move
+    }
+  }
 
   // Rule: You cannot trail a card if a loose card of the same rank is on the table.
   const looseCardRanks = tableCards
