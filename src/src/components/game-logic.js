@@ -116,19 +116,25 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
 
   // Validation 1: Player must have a card in hand that can capture this new build.
   // The card used for the build doesn't count.
-  const canCaptureBuild = playerHand.some(c => rankValue(c.rank) === buildValue && c !== playerCard);
+  const canCaptureBuild = playerHand.some(
+    c => rankValue(c.rank) === buildValue && (c.rank !== playerCard.rank || c.suit !== playerCard.suit)
+  );
   if (!canCaptureBuild) {
-    console.error(`Cannot build ${buildValue}. Player does not have a card of this value to capture it later.`);
-    // In a real UI, you'd show a message instead of logging.
+    // This validation is now primarily handled in GameBoard.js before calling,
+    // but it's good to keep it here as a safeguard.
+    alert(`Cannot build ${buildValue}. You do not have a card of this value to capture it later.`);
     return gameState; // Invalid build, return original state.
   }
 
   const allCardsInBuild = [playerCard, ...tableCardsInBuild];
+  // Sort the cards in the build by value, so they are always displayed consistently.
+  // Smallest card value will be at the end of the array to appear "on top" in a simple map render.
+  allCardsInBuild.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
   const sumOfCards = allCardsInBuild.reduce((sum, card) => sum + rankValue(card.rank), 0);
 
   // Validation 2: The sum of cards in the build must equal the declared build value.
   if (sumOfCards !== buildValue) {
-      console.error(`Sum of cards (${sumOfCards}) does not match build value (${buildValue}).`);
+      alert(`Sum of cards (${sumOfCards}) does not match build value (${buildValue}).`);
       return gameState;
   }
 
@@ -141,10 +147,11 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
   };
 
   // Remove the played card from the player's hand
-  const newPlayerHands = [...playerHands];
-  const cardIndex = newPlayerHands[currentPlayer].findIndex(c => c.rank === playerCard.rank && c.suit === playerCard.suit);
+  const newPlayerHands = JSON.parse(JSON.stringify(playerHands));
+  const hand = newPlayerHands[currentPlayer];
+  const cardIndex = hand.findIndex(c => c.rank === playerCard.rank && c.suit === playerCard.suit);
   if (cardIndex > -1) {
-    newPlayerHands[currentPlayer].splice(cardIndex, 1);
+    hand.splice(cardIndex, 1);
   } else {
     console.error("Played card not found in hand.");
     return gameState;
@@ -152,7 +159,14 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
 
   // Remove the used cards from the table
   const tableCardIdentifiers = tableCardsInBuild.map(c => `${c.rank}-${c.suit}`);
-  const newTableCards = tableCards.filter(c => !tableCardIdentifiers.includes(`${c.rank}-${c.suit}`));
+  const newTableCards = tableCards.filter(c => {
+    // Keep existing builds that are not part of this new build
+    if (c.type === 'build') {
+      return true;
+    }
+    // Filter out loose cards that are now in the new build
+    return !tableCardIdentifiers.includes(`${c.rank}-${c.suit}`);
+  });
   newTableCards.push(newBuild);
 
   return {
@@ -257,25 +271,29 @@ export const findValidBuilds = (selectedCard, tableCards) => {
 export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
   const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
 
-  const capturedCards = [selectedCard, ...selectedTableCards];
+  // Create deep copies for safe mutation
+  const newPlayerHands = JSON.parse(JSON.stringify(playerHands));
+  const newPlayerCaptures = JSON.parse(JSON.stringify(playerCaptures));
 
   // Remove the selected card from the player's hand
-  const newPlayerHands = [...playerHands];
   const hand = newPlayerHands[currentPlayer];
   const cardIndex = hand.findIndex(c => c.rank === selectedCard.rank && c.suit === selectedCard.suit);
 
   if (cardIndex > -1) {
     hand.splice(cardIndex, 1);
   } else {
-    console.error("Card to capture not found in player's hand.");
+    console.error("Card to capture with not found in player's hand.");
     return gameState; // Card not found, abort.
   }
+
+  const capturedItemsIdentifiers = new Set(selectedTableCards.map(c => `${c.rank}-${c.suit}`));
+
   // Remove the captured cards from the table
-  const newTableCards = tableCards.filter((c) => !selectedTableCards.includes(c));
+  const newTableCards = tableCards.filter(c => c.type === 'build' || !capturedItemsIdentifiers.has(`${c.rank}-${c.suit}`));
 
   // Add the captured cards to the player's captures
-  const newPlayerCaptures = [...playerCaptures];
-  newPlayerCaptures[currentPlayer] = [...newPlayerCaptures[currentPlayer], ...capturedCards];
+  const allCapturedCards = [selectedCard, ...selectedTableCards];
+  newPlayerCaptures[currentPlayer].push(...allCapturedCards);
 
   return {
     ...gameState,

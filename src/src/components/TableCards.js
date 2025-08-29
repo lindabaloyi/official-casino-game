@@ -1,7 +1,7 @@
 import React from 'react';
 import CardStack from './CardStack';
 
-const TableCards = ({ cards }) => {
+const TableCards = ({ cards, onDropOnCard }) => {
   // Group loose cards by their rank.
   const looseCardGroups = cards
     .filter(c => !c.type)
@@ -22,6 +22,7 @@ const TableCards = ({ cards }) => {
             key={`loose-stack-${index}`}
             stackId={`loose-stack-${index}`}
             cards={group}
+            onDropStack={onDropOnCard}
           />
         )}
         {/* Render each build as a stack inside its own container */}
@@ -30,6 +31,7 @@ const TableCards = ({ cards }) => {
             <CardStack
               stackId={`build-stack-${index}`}
               cards={build.cards}
+              onDropStack={onDropOnCard}
             />
           </div>
         ))}

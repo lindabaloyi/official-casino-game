@@ -6,6 +6,7 @@ import { useDrop } from 'react-dnd';
 import {
   initializeGame,
   handleBuild,
+  rankValue,
   handleTrail,
   handleCapture,
 } from './game-logic';
@@ -29,22 +30,62 @@ function GameBoard({ onRestart }) {
     });
   }, []); // No dependency on gameState, so this function is stable.
 
+  // New handler for dropping a card on another card
+  const handleDropOnCard = useCallback((draggedItem, targetCard) => {
+    // This handler is called when a card is dropped on a CardStack.
+    // If the targetCard is null, it means the drop was on the stack but not a specific card.
+    // We should prevent any action to avoid ambiguity.
+    if (!targetCard || !draggedItem || !draggedItem.card) {
+      console.warn("Drop on card stack was ambiguous, no action taken.");
+      return;
+    }
+
+    setGameState(currentGameState => {
+      const { currentPlayer, playerHands } = currentGameState;
+      const playerHand = playerHands[currentPlayer];
+      const draggedCard = draggedItem.card;
+
+      // 1. Check if it's the current player's turn.
+      if (draggedItem.player !== currentPlayer) {
+        alert("It's not your turn!");
+        return currentGameState;
+      }
+
+      // 2. Determine if a BUILD is possible.
+      const buildValue = rankValue(draggedCard.rank) + rankValue(targetCard.rank);
+      const canBuild = playerHand.some(
+        c => rankValue(c.rank) === buildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit)
+      );
+
+      // 3. Determine if a simple CAPTURE is possible.
+      const canCapture = rankValue(draggedCard.rank) === rankValue(targetCard.rank);
+
+      // 4. Execute the action, prioritizing Build over Capture.
+      if (canBuild) {
+        return handleBuild(currentGameState, draggedCard, [targetCard], buildValue);
+      } else if (canCapture) {
+        return handleCapture(currentGameState, draggedCard, [targetCard]);
+      } else {
+        alert("Invalid move. You cannot build or capture with these cards.");
+        return currentGameState;
+      }
+    });
+  }, []);
+
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: ItemTypes.CARD,
-    drop: (item) => handleTrailCard(item.card, item.player),
+    drop: (item, monitor) => {
+      // If a nested drop target has already handled the drop, do nothing.
+      if (monitor.didDrop()) {
+        return;
+      }
+      handleTrailCard(item.card, item.player);
+    },
     collect: (monitor) => ({
       isOver: monitor.isOver(),
       canDrop: monitor.canDrop(),
     }),
   }), [handleTrailCard]);
-
-  const rankValue = (rank) => {
-    if (rank === 'A') return 1;
-    if (rank === 'J') return 11;
-    if (rank === 'Q') return 12;
-    if (rank === 'K') return 13;
-    return parseInt(rank, 10);
-  };
 
   const isActive = isOver && canDrop;
 
@@ -61,6 +102,7 @@ function GameBoard({ onRestart }) {
       <div className="table-cards-section">
         <TableCards
           cards={gameState.tableCards}
+          onDropOnCard={handleDropOnCard}
         />
       </div>
       <div className="player-hands-section">

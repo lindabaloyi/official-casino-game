@@ -14,7 +14,7 @@ const rankValue = (rank) => {
   return parseInt(rank, 10);
 };
 
-const CardStack = ({ cards, onDropStack, stackId }) => {
+const CardStack = ({ cards, onDropStack, onDropOnCard, stackId }) => {
   const [{ isOverStack }, dropStack] = useDrop(() => ({
     accept: ItemTypes.CARD,
     drop: (item, monitor) => onDropStack(item, monitor.getClientOffset()),
@@ -38,11 +38,36 @@ const CardStack = ({ cards, onDropStack, stackId }) => {
         padding: '5px',
       }}
     >
-      {sortedCards.map((card, idx) => (
-        <div key={`${stackId}-${card.rank}-${card.suit}-${idx}`} style={{ position: 'absolute', top: `${idx * 20}px`, left: 0, zIndex: idx }}>
-          <Card rank={card.rank} suit={card.suit} />
-        </div>
-      ))}
+      {sortedCards.map((card, idx) => {
+        const [{ isOverCard }, dropCard] = useDrop(() => ({
+          accept: ItemTypes.CARD,
+          drop: (item) => {
+            if (onDropOnCard) {
+              onDropOnCard(item, card);
+            }
+          },
+          collect: (monitor) => ({
+            isOverCard: monitor.isOver(),
+          }),
+        }));
+
+        return (
+          <div
+            key={`${stackId}-${card.rank}-${card.suit}-${idx}`}
+            ref={dropCard}
+            style={{
+              position: 'absolute',
+              top: `${idx * 20}px`,
+              left: 0,
+              zIndex: idx,
+              backgroundColor: isOverCard ? 'rgba(255, 255, 0, 0.3)' : 'transparent',
+              borderRadius: '5px',
+            }}
+          >
+            <Card rank={card.rank} suit={card.suit} />
+          </div>
+        );
+      })}
     </div>
   );
 };
