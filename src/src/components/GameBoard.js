@@ -60,14 +60,8 @@ function GameBoard({ onRestart }) {
           return handleCapture(currentGameState, draggedCard, build.cards);
         }
 
-        // If we reach here, the move is invalid. Let's provide a better reason.
-        if (build.owner !== currentPlayer) {
-          alert("You cannot build on an opponent's build. You can only capture it if your card's value matches the build's value.");
-        } else {
-          // A player cannot drop a single card from their hand onto their own build.
-          // They must combine it with a loose card from the table.
-          alert("Invalid move. To add to your build, drop your hand card onto a loose card on the table.");
-        }
+        // If capture is not possible, the move is invalid. Provide a clear, direct reason.
+        alert(`Cannot use a ${draggedCard.rank} to capture a build of ${build.value}. The values must match.`);
         return currentGameState;
       }
 
