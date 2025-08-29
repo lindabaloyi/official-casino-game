@@ -186,3 +186,27 @@ body {
   flex-wrap: wrap;
   justify-content: center;
 }
+
+/* Styles for CardStack component */
+.card-stack {
+  /* Allows child cards to be positioned absolutely relative to the stack */
+  position: relative;
+  /* Give it a minimum size to be a decent drop target */
+  width: 80px;
+  height: 150px; /* Taller to accommodate stacked cards */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  transition: background-color 0.2s ease-in-out;
+  border-radius: 8px;
+  padding-top: 5px;
+}
+
+.card-stack.active-drop {
+  background-color: rgba(255, 255, 0, 0.2); /* Yellow tint on hover */
+}
+
+.card-in-stack {
+  position: absolute;
+  /* The card component itself has a margin, so we don't need one here */
+}
