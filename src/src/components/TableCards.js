@@ -16,16 +16,16 @@ const TableCards = ({ cards, onDropOnCard }) => {
             key={`loose-stack-${index}`}
             stackId={`loose-stack-${index}`}
             cards={[card]} // Each loose card is a stack of one.
-            onDropStack={(draggedItem) => onDropOnCard(draggedItem, card)}
+            onDropStack={(draggedItem) => onDropOnCard(draggedItem, { type: 'loose', rank: card.rank, suit: card.suit })}
           />
         )}
         {/* Render each build as a stack inside its own container */}
         {builds.map((build, index) => (
           <div key={`build-container-${index}`} className="build">
             <CardStack
-              stackId={build.buildId || `build-stack-${index}`}
+              stackId={build.buildId}
               cards={build.cards}
-              onDropStack={(draggedItem) => onDropOnCard(draggedItem, build)}
+              onDropStack={(draggedItem) => onDropOnCard(draggedItem, { type: 'build', buildId: build.buildId })}
             />
             <div className="build-owner-tag">
               P{build.owner + 1}

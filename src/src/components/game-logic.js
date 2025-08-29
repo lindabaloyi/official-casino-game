@@ -138,9 +138,7 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
   }
 
   const allCardsInBuild = [playerCard, ...tableCardsInBuild];
-  // Sort the cards in the build by value, so they are always displayed consistently.
-  // Smallest card value will be at the end of the array to appear "on top" in a simple map render.
-  allCardsInBuild.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+  // The order of cards in the build is preserved as they are played.
   const sumOfCards = allCardsInBuild.reduce((sum, card) => sum + rankValue(card.rank), 0);
 
   // Validation 2: The sum of cards in the build must equal the declared build value.
@@ -207,11 +205,8 @@ export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo)
     return gameState;
   }
 
-  // Combine all cards for the new, larger build. The new pair is sorted
-  // so it stacks visually, but the existing build's card order is preserved.
+  // The new pair is added to the build, preserving the order of play.
   const newPair = [playerCard, tableCard];
-  newPair.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
-
   const newBuildCards = [...buildToAddTo.cards, ...newPair];
 
   // Create the new build object, keeping the original value and owner.
@@ -377,7 +372,7 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
   // Add the captured cards to the player's captures
   // The cards that form this specific capture event are grouped together
   // to preserve the visual order of the capture.
-  const capturedGroup = [selectedCard, ...selectedTableCards];
+  const capturedGroup = [...selectedTableCards, selectedCard];
   newPlayerCaptures[currentPlayer].push(capturedGroup);
 
   return {

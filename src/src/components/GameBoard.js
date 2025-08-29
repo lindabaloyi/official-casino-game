@@ -32,8 +32,8 @@ function GameBoard({ onRestart }) {
   }, []); // No dependency on gameState, so this function is stable.
 
   // New handler for dropping a card on another card
-  const handleDropOnCard = useCallback((draggedItem, targetItem) => {
-    if (!targetItem || !draggedItem || !draggedItem.card) {
+  const handleDropOnCard = useCallback((draggedItem, targetInfo) => {
+    if (!targetInfo || !draggedItem || !draggedItem.card) {
       console.warn("Drop on card stack was ambiguous, no action taken.");
       return;
     }
@@ -52,8 +52,9 @@ function GameBoard({ onRestart }) {
       // --- ACTION LOGIC ---
 
       // CASE 1: Dropped on a BUILD
-      if (targetItem.type === 'build') {
-        const build = targetItem;
+      if (targetInfo.type === 'build') {
+        const build = tableCards.find(c => c.buildId === targetInfo.buildId);
+        if (!build) return currentGameState; // Build might have been captured by another action
 
         // Action A: CAPTURE the build
         if (rankValue(draggedCard.rank) === build.value) {
@@ -66,28 +67,32 @@ function GameBoard({ onRestart }) {
       }
 
       // CASE 2: Dropped on a LOOSE CARD
-      const looseCard = targetItem;
-      const buildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
-      const canBuild = playerHand.some(c => rankValue(c.rank) === buildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit));
-      const canCapture = rankValue(draggedCard.rank) === rankValue(looseCard.rank);
+      if (targetInfo.type === 'loose') {
+        const looseCard = tableCards.find(c => !c.type && c.rank === targetInfo.rank && c.suit === targetInfo.suit);
+        if (!looseCard) return currentGameState; // Card might have been captured
 
-      // Action A: ADD TO an existing build.
-      const existingBuild = tableCards.find(
-        item => item.type === 'build' && item.owner === currentPlayer && item.value === buildValue
-      );
-      if (existingBuild) {
-        return handleAddToBuild(currentGameState, draggedCard, looseCard, existingBuild);
+        const buildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
+        const canBuild = playerHand.some(c => rankValue(c.rank) === buildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit));
+        const canCapture = rankValue(draggedCard.rank) === rankValue(looseCard.rank);
+
+        const existingBuild = tableCards.find(
+          item => item.type === 'build' && item.owner === currentPlayer && item.value === buildValue
+        );
+        if (existingBuild) {
+          return handleAddToBuild(currentGameState, draggedCard, looseCard, existingBuild);
+        }
+
+        if (canBuild) {
+          return handleBuild(currentGameState, draggedCard, [looseCard], buildValue);
+        }
+
+        if (canCapture) return handleCapture(currentGameState, draggedCard, [looseCard]);
+
+        alert("Invalid move. You cannot build or capture with these cards.");
+        return currentGameState;
       }
 
-      // Action B: CREATE a new build.
-      if (canBuild) {
-        return handleBuild(currentGameState, draggedCard, [looseCard], buildValue);
-      }
-
-      // Action C: CAPTURE the loose card.
-      if (canCapture) return handleCapture(currentGameState, draggedCard, [looseCard]);
-
-      alert("Invalid move. You cannot build or capture with these cards.");
+      // Default case if targetInfo.type is unknown
       return currentGameState;
     });
   }, []);
