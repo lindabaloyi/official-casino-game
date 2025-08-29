@@ -7,6 +7,7 @@ import {
   initializeGame,
   handleBuild,
   rankValue,
+  handleAddToBuild,
   handleTrail,
   handleCapture,
 } from './game-logic';
@@ -31,17 +32,14 @@ function GameBoard({ onRestart }) {
   }, []); // No dependency on gameState, so this function is stable.
 
   // New handler for dropping a card on another card
-  const handleDropOnCard = useCallback((draggedItem, targetCard) => {
-    // This handler is called when a card is dropped on a CardStack.
-    // If the targetCard is null, it means the drop was on the stack but not a specific card.
-    // We should prevent any action to avoid ambiguity.
-    if (!targetCard || !draggedItem || !draggedItem.card) {
+  const handleDropOnCard = useCallback((draggedItem, targetItem) => {
+    if (!targetItem || !draggedItem || !draggedItem.card) {
       console.warn("Drop on card stack was ambiguous, no action taken.");
       return;
     }
 
     setGameState(currentGameState => {
-      const { currentPlayer, playerHands } = currentGameState;
+      const { currentPlayer, playerHands, tableCards } = currentGameState;
       const playerHand = playerHands[currentPlayer];
       const draggedCard = draggedItem.card;
 
@@ -51,24 +49,52 @@ function GameBoard({ onRestart }) {
         return currentGameState;
       }
 
-      // 2. Determine if a BUILD is possible.
-      const buildValue = rankValue(draggedCard.rank) + rankValue(targetCard.rank);
-      const canBuild = playerHand.some(
-        c => rankValue(c.rank) === buildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit)
-      );
+      // --- ACTION LOGIC ---
 
-      // 3. Determine if a simple CAPTURE is possible.
-      const canCapture = rankValue(draggedCard.rank) === rankValue(targetCard.rank);
+      // CASE 1: Dropped on a BUILD
+      if (targetItem.type === 'build') {
+        const build = targetItem;
 
-      // 4. Execute the action, prioritizing Build over Capture.
-      if (canBuild) {
-        return handleBuild(currentGameState, draggedCard, [targetCard], buildValue);
-      } else if (canCapture) {
-        return handleCapture(currentGameState, draggedCard, [targetCard]);
-      } else {
-        alert("Invalid move. You cannot build or capture with these cards.");
+        // Action A: CAPTURE the build
+        if (rankValue(draggedCard.rank) === build.value) {
+          return handleCapture(currentGameState, draggedCard, build.cards);
+        }
+
+        // If we reach here, the move is invalid. Let's provide a better reason.
+        if (build.owner !== currentPlayer) {
+          alert("You cannot build on an opponent's build. You can only capture it if your card's value matches the build's value.");
+        } else {
+          // A player cannot drop a single card from their hand onto their own build.
+          // They must combine it with a loose card from the table.
+          alert("Invalid move. To add to your build, drop your hand card onto a loose card on the table.");
+        }
         return currentGameState;
       }
+
+      // CASE 2: Dropped on a LOOSE CARD
+      const looseCard = targetItem;
+      const buildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
+      const canBuild = playerHand.some(c => rankValue(c.rank) === buildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit));
+      const canCapture = rankValue(draggedCard.rank) === rankValue(looseCard.rank);
+
+      // Action A: ADD TO an existing build.
+      const existingBuild = tableCards.find(
+        item => item.type === 'build' && item.owner === currentPlayer && item.value === buildValue
+      );
+      if (existingBuild) {
+        return handleAddToBuild(currentGameState, draggedCard, looseCard, existingBuild);
+      }
+
+      // Action B: CREATE a new build.
+      if (canBuild) {
+        return handleBuild(currentGameState, draggedCard, [looseCard], buildValue);
+      }
+
+      // Action C: CAPTURE the loose card.
+      if (canCapture) return handleCapture(currentGameState, draggedCard, [looseCard]);
+
+      alert("Invalid move. You cannot build or capture with these cards.");
+      return currentGameState;
     });
   }, []);
 
@@ -94,7 +120,7 @@ function GameBoard({ onRestart }) {
       <div className="status-section">
         <p>Round: {gameState.round}</p>
       </div>
-      <div className="captured-cards-section">
+      <div className="captured-cards-positioned">
         {gameState.playerCaptures.map((capturedCards, index) => (
           <CapturedCards key={index} player={index} cards={capturedCards} />
         ))}

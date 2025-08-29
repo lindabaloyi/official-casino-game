@@ -151,6 +151,7 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
 
   // Create the new build object
   const newBuild = {
+    buildId: `build-${Date.now()}-${Math.random()}`, // Unique ID for the build
     type: 'build',
     cards: allCardsInBuild,
     value: buildValue,
@@ -178,6 +179,68 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
     // Filter out loose cards that are now in the new build
     return !tableCardIdentifiers.includes(`${c.rank}-${c.suit}`);
   });
+  newTableCards.push(newBuild);
+
+  return {
+    ...gameState,
+    playerHands: newPlayerHands,
+    tableCards: newTableCards,
+    currentPlayer: (currentPlayer + 1) % 2,
+  };
+};
+
+/**
+ * Handles adding cards to an existing build.
+ * @param {object} gameState - The current game state.
+ * @param {object} playerCard - The card played from the hand.
+ * @param {object} tableCard - The loose card from the table to add to the build.
+ * @param {object} buildToAddTo - The build object being modified.
+ * @returns {object} The new game state.
+ */
+export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo) => {
+  const { playerHands, tableCards, currentPlayer } = gameState;
+
+  // Rule: The cards being added must sum to the value of the build they are being added to.
+  const addedValue = rankValue(playerCard.rank) + rankValue(tableCard.rank);
+  if (addedValue !== buildToAddTo.value) {
+    alert(`Illegal move. The cards you are adding (${playerCard.rank} + ${tableCard.rank}) sum to ${addedValue}, not the build's value of ${buildToAddTo.value}.`);
+    return gameState;
+  }
+
+  // Combine all cards for the new, larger build. The new pair is sorted
+  // so it stacks visually, but the existing build's card order is preserved.
+  const newPair = [playerCard, tableCard];
+  newPair.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+
+  const newBuildCards = [...buildToAddTo.cards, ...newPair];
+
+  // Create the new build object, keeping the original value and owner.
+  const newBuild = {
+    ...buildToAddTo,
+    cards: newBuildCards,
+  };
+
+  // --- Update Game State ---
+
+  // 1. Remove played card from player's hand.
+  const newPlayerHands = JSON.parse(JSON.stringify(playerHands));
+  const hand = newPlayerHands[currentPlayer];
+  const cardIndex = hand.findIndex(c => c.rank === playerCard.rank && c.suit === playerCard.suit);
+  if (cardIndex > -1) {
+    hand.splice(cardIndex, 1);
+  } else {
+    console.error("Card to add to build not found in hand.");
+    return gameState;
+  }
+
+  // 2. Remove the old build and the used loose card from the table.
+  const newTableCards = tableCards.filter(item => {
+    if (item.buildId === buildToAddTo.buildId) return false; // Remove old build
+    if (!item.type && item.rank === tableCard.rank && item.suit === tableCard.suit) return false; // Remove loose card
+    return true;
+  });
+
+  // 3. Add the new, larger build to the table.
   newTableCards.push(newBuild);
 
   return {
@@ -300,11 +363,22 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
   const capturedItemsIdentifiers = new Set(selectedTableCards.map(c => `${c.rank}-${c.suit}`));
 
   // Remove the captured cards from the table
-  const newTableCards = tableCards.filter(c => c.type === 'build' || !capturedItemsIdentifiers.has(`${c.rank}-${c.suit}`));
+  const newTableCards = tableCards.filter(item => {
+    if (item.type === 'build') {
+      // If any card of this build is in the list of cards to capture, the whole build is captured.
+      const isBuildCaptured = item.cards.some(cardInBuild => capturedItemsIdentifiers.has(`${cardInBuild.rank}-${cardInBuild.suit}`));
+      return !isBuildCaptured; // return false (remove it) if captured
+    } else {
+      // It's a loose card.
+      return !capturedItemsIdentifiers.has(`${item.rank}-${item.suit}`);
+    }
+  });
 
   // Add the captured cards to the player's captures
-  const allCapturedCards = [selectedCard, ...selectedTableCards];
-  newPlayerCaptures[currentPlayer].push(...allCapturedCards);
+  // The cards that form this specific capture event are grouped together
+  // to preserve the visual order of the capture.
+  const capturedGroup = [selectedCard, ...selectedTableCards];
+  newPlayerCaptures[currentPlayer].push(capturedGroup);
 
   return {
     ...gameState,
@@ -323,7 +397,10 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
 export const calculateScores = (playerCaptures) => {
   const scores = [0, 0];
 
-  playerCaptures.forEach((captures, playerIndex) => {
+  // Flatten the captured groups for each player to get a simple list of cards
+  const flatPlayerCaptures = playerCaptures.map(captureGroups => captureGroups.flat());
+
+  flatPlayerCaptures.forEach((captures, playerIndex) => {
     let score = 0;
     for (const card of captures) {
       if (card.rank === 'A') {
@@ -338,9 +415,9 @@ export const calculateScores = (playerCaptures) => {
   });
 
   // Add bonus points for the player with the most cards
-  if (playerCaptures[0].length > playerCaptures[1].length) {
+  if (flatPlayerCaptures[0].length > flatPlayerCaptures[1].length) {
     scores[0] += 3;
-  } else if (playerCaptures[1].length > playerCaptures[0].length) {
+  } else if (flatPlayerCaptures[1].length > flatPlayerCaptures[0].length) {
     scores[1] += 3;
   }
 

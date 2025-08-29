@@ -134,15 +134,19 @@ body {
 }
 
 /* Display captured cards in a single horizontal row */
-.horizontal-cards {
-  display: flex;
-  flex-direction: row;
-  gap: -25px; /* Overlap cards */
-  height: auto; /* Remove fixed height */
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  min-height: 95px;
+.captured-stack-container {
+  position: relative;
+  width: 80px;
+  /* Height needs to be large enough to show the fanned stack */
+  height: 170px;
+  min-height: 95px; /* Keep for consistent height with placeholder */
+}
+
+.card-in-capture-stack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: auto; /* Center the card horizontally */
 }
 
 .captured-cards-container {
@@ -209,4 +213,21 @@ body {
 .card-in-stack {
   position: absolute;
   /* The card component itself has a margin, so we don't need one here */
+}
+
+.build {
+  position: relative;
+}
+
+.build-owner-tag {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: bold;
+  color: red;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none; /* Prevents the tag from interfering with drop events */
 }
