@@ -64,6 +64,23 @@ export const rankValue = (rank) => {
 };
 
 /**
+ * Logs the current state of the game for debugging purposes.
+ * @param {string} moveDescription - A description of the move that just occurred.
+ * @param {object} gameState - The game state to log.
+ */
+const logGameState = (moveDescription, gameState) => {
+  // Using console.group to create collapsible log groups for better readability
+  console.group(`%cMove: ${moveDescription}`, 'color: blue; font-weight: bold;');
+  console.log('Table Cards:', JSON.parse(JSON.stringify(gameState.tableCards)));
+  console.log('Player 1 Hand:', JSON.parse(JSON.stringify(gameState.playerHands[0])));
+  console.log('Player 2 Hand:', JSON.parse(JSON.stringify(gameState.playerHands[1])));
+  console.log('Player 1 Captures:', JSON.parse(JSON.stringify(gameState.playerCaptures[0])));
+  console.log('Player 2 Captures:', JSON.parse(JSON.stringify(gameState.playerCaptures[1])));
+  console.log(`Next turn: Player ${gameState.currentPlayer + 1}`);
+  console.groupEnd();
+};
+
+/**
  * Handles trailing a card to the table.
  * @param {object} gameState - The current game state.
  * @param {object} card - The card to trail.
@@ -105,12 +122,15 @@ export const handleTrail = (gameState, card) => {
     return gameState; // Card not found, abort.
   }
 
-  return {
+  const newState = {
     ...gameState,
     playerHands: newPlayerHands,
     tableCards: [...tableCards, card],
     currentPlayer: (currentPlayer + 1) % 2,
   };
+
+  logGameState(`Player ${currentPlayer + 1} trailed a ${card.rank}`, newState);
+  return newState;
 };
 
 /**
@@ -137,15 +157,34 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
     return gameState; // Invalid build, return original state.
   }
 
+  // Validation 2: A player cannot create a build if an opponent already has a build of the same value.
+  const opponentHasSameBuild = tableCards.some(
+    item => item.type === 'build' && item.owner !== currentPlayer && item.value === buildValue
+  );
+  if (opponentHasSameBuild) {
+    alert(`You cannot create a build of ${buildValue} because your opponent already has one.`);
+    return gameState;
+  }
+
   const allCardsInBuild = [playerCard, ...tableCardsInBuild];
-  // The order of cards in the build is preserved as they are played.
+  allCardsInBuild.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
   const sumOfCards = allCardsInBuild.reduce((sum, card) => sum + rankValue(card.rank), 0);
 
-  // Validation 2: The sum of cards in the build must equal the declared build value.
-  if (sumOfCards !== buildValue) {
-      alert(`Sum of cards (${sumOfCards}) does not match build value (${buildValue}).`);
-      return gameState;
+  // --- NEW VALIDATION LOGIC ---
+  // A build is valid if it's a "Sum Build" OR a "Set Build".
+
+  // Condition 1: Is it a valid "Sum Build"?
+  const isSumBuild = sumOfCards === buildValue;
+
+  // Condition 2: Is it a valid "Set Build"?
+  const isSetBuild = allCardsInBuild.every(c => rankValue(c.rank) === buildValue);
+
+  // The build must be one of these types, and its value cannot exceed 10.
+  if ((!isSumBuild && !isSetBuild) || buildValue > 10) {
+    alert(`Invalid build. Cards do not form a valid build of ${buildValue}.`);
+    return gameState;
   }
+  // --- END NEW VALIDATION LOGIC ---
 
   // Create the new build object
   const newBuild = {
@@ -179,12 +218,15 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
   });
   newTableCards.push(newBuild);
 
-  return {
+  const newState = {
     ...gameState,
     playerHands: newPlayerHands,
     tableCards: newTableCards,
     currentPlayer: (currentPlayer + 1) % 2,
   };
+
+  logGameState(`Player ${currentPlayer + 1} built a ${buildValue}`, newState);
+  return newState;
 };
 
 /**
@@ -198,16 +240,10 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
 export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo) => {
   const { playerHands, tableCards, currentPlayer } = gameState;
 
-  // Rule: The cards being added must sum to the value of the build they are being added to.
-  const addedValue = rankValue(playerCard.rank) + rankValue(tableCard.rank);
-  if (addedValue !== buildToAddTo.value) {
-    alert(`Illegal move. The cards you are adding (${playerCard.rank} + ${tableCard.rank}) sum to ${addedValue}, not the build's value of ${buildToAddTo.value}.`);
-    return gameState;
-  }
-
-  // The new pair is added to the build, preserving the order of play.
+  // The new pair is added to the build.
   const newPair = [playerCard, tableCard];
   const newBuildCards = [...buildToAddTo.cards, ...newPair];
+  newBuildCards.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
 
   // Create the new build object, keeping the original value and owner.
   const newBuild = {
@@ -223,9 +259,6 @@ export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo)
   const cardIndex = hand.findIndex(c => c.rank === playerCard.rank && c.suit === playerCard.suit);
   if (cardIndex > -1) {
     hand.splice(cardIndex, 1);
-  } else {
-    console.error("Card to add to build not found in hand.");
-    return gameState;
   }
 
   // 2. Remove the old build and the used loose card from the table.
@@ -238,12 +271,14 @@ export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo)
   // 3. Add the new, larger build to the table.
   newTableCards.push(newBuild);
 
-  return {
+  const newState = {
     ...gameState,
     playerHands: newPlayerHands,
     tableCards: newTableCards,
     currentPlayer: (currentPlayer + 1) % 2,
   };
+  logGameState(`Player ${currentPlayer + 1} added to build of ${newBuild.value}`, newState);
+  return newState;
 };
 
 /**
@@ -355,13 +390,13 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
     return gameState; // Card not found, abort.
   }
 
-  const capturedItemsIdentifiers = new Set(selectedTableCards.map(c => `${c.rank}-${c.suit}`));
+  const capturedItemsIdentifiers = new Set(selectedTableCards.map(c => c.buildId ? c.buildId : `${c.rank}-${c.suit}`));
 
   // Remove the captured cards from the table
   const newTableCards = tableCards.filter(item => {
     if (item.type === 'build') {
       // If any card of this build is in the list of cards to capture, the whole build is captured.
-      const isBuildCaptured = item.cards.some(cardInBuild => capturedItemsIdentifiers.has(`${cardInBuild.rank}-${cardInBuild.suit}`));
+      const isBuildCaptured = selectedTableCards.some(capturedItem => capturedItem.buildId === item.buildId);
       return !isBuildCaptured; // return false (remove it) if captured
     } else {
       // It's a loose card.
@@ -370,18 +405,20 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
   });
 
   // Add the captured cards to the player's captures
-  // The cards that form this specific capture event are grouped together
-  // to preserve the visual order of the capture.
-  const capturedGroup = [...selectedTableCards, selectedCard];
+  // The cards that form this specific capture event are grouped together.
+  const capturedGroup = [selectedCard, ...selectedTableCards.flatMap(item => item.type === 'build' ? item.cards : item)];
   newPlayerCaptures[currentPlayer].push(capturedGroup);
 
-  return {
+  const newState = {
     ...gameState,
     playerHands: newPlayerHands,
     tableCards: newTableCards,
     playerCaptures: newPlayerCaptures,
     currentPlayer: (currentPlayer + 1) % 2,
   };
+
+  logGameState(`Player ${currentPlayer + 1} captured with a ${selectedCard.rank}`, newState);
+  return newState;
 };
 
 /**
@@ -392,7 +429,7 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
 export const calculateScores = (playerCaptures) => {
   const scores = [0, 0];
 
-  // Flatten the captured groups for each player to get a simple list of cards
+  // Flatten the captured groups for each player to get a simple list of cards for scoring
   const flatPlayerCaptures = playerCaptures.map(captureGroups => captureGroups.flat());
 
   flatPlayerCaptures.forEach((captures, playerIndex) => {

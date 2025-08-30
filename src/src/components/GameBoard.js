@@ -58,7 +58,7 @@ function GameBoard({ onRestart }) {
 
         // Action A: CAPTURE the build
         if (rankValue(draggedCard.rank) === build.value) {
-          return handleCapture(currentGameState, draggedCard, build.cards);
+          return handleCapture(currentGameState, draggedCard, [build]);
         }
 
         // If capture is not possible, the move is invalid. Provide a clear, direct reason.
@@ -69,24 +69,67 @@ function GameBoard({ onRestart }) {
       // CASE 2: Dropped on a LOOSE CARD
       if (targetInfo.type === 'loose') {
         const looseCard = tableCards.find(c => !c.type && c.rank === targetInfo.rank && c.suit === targetInfo.suit);
-        if (!looseCard) return currentGameState; // Card might have been captured
+        if (!looseCard) return currentGameState;
 
-        const buildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
-        const canBuild = playerHand.some(c => rankValue(c.rank) === buildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit));
-        const canCapture = rankValue(draggedCard.rank) === rankValue(looseCard.rank);
+        const potentialBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
 
-        const existingBuild = tableCards.find(
-          item => item.type === 'build' && item.owner === currentPlayer && item.value === buildValue
-        );
+        // HIERARCHY CHECK 1: Does the player already own a build? This drastically changes their legal moves.
+        const existingBuild = tableCards.find(item => item.type === 'build' && item.owner === currentPlayer);
+
         if (existingBuild) {
-          return handleAddToBuild(currentGameState, draggedCard, looseCard, existingBuild);
+          // A player with a build has limited options. They can either add to it or make a simple capture.
+
+          // Option A: MUST they add to their build?
+          if (potentialBuildValue === existingBuild.value) {
+            return handleAddToBuild(currentGameState, draggedCard, looseCard, existingBuild);
+          }
+          // Option B: Are they making a simple capture?
+          else if (rankValue(draggedCard.rank) === rankValue(looseCard.rank)) {
+            return handleCapture(currentGameState, draggedCard, [looseCard]);
+          }
+          else {
+            alert(`Invalid move. You cannot create a new build while you already own one.`);
+            return currentGameState; // Any other move is illegal.
+          }
         }
 
-        if (canBuild) {
-          return handleBuild(currentGameState, draggedCard, [looseCard], buildValue);
+        // If we reach here, the player does NOT own a build. They are free to create one.
+
+        // HIERARCHY CHECK 2: Is this an ambiguous same-rank play?
+        const isSameRankPlay = rankValue(draggedCard.rank) === rankValue(looseCard.rank);
+        if (isSameRankPlay) {
+          const remainingHand = playerHand.filter(c => c.rank !== draggedCard.rank || c.suit !== draggedCard.suit);
+          const possibleActions = [];
+          possibleActions.push({ type: 'capture', label: `Capture ${looseCard.rank}` });
+
+          const setBuildValue = rankValue(draggedCard.rank);
+          if (remainingHand.some(c => rankValue(c.rank) === setBuildValue)) {
+            possibleActions.push({ type: 'build', label: `Build ${setBuildValue}`, buildValue: setBuildValue });
+          }
+          if (potentialBuildValue <= 10 && remainingHand.some(c => rankValue(c.rank) === potentialBuildValue)) {
+            possibleActions.push({ type: 'build', label: `Build ${potentialBuildValue}`, buildValue: potentialBuildValue });
+          }
+
+          if (possibleActions.length > 1) {
+            const promptMessage = `Choose an action:\n${possibleActions.map((a, i) => `${i + 1}: ${a.label}`).join('\n')}`;
+            const choice = window.prompt(promptMessage, '1');
+            const choiceIndex = parseInt(choice, 10) - 1;
+            if (choiceIndex >= 0 && choiceIndex < possibleActions.length) {
+              const selectedAction = possibleActions[choiceIndex];
+              return selectedAction.type === 'capture' ? handleCapture(currentGameState, draggedCard, [looseCard]) : handleBuild(currentGameState, draggedCard, [looseCard], selectedAction.buildValue);
+            }
+            return currentGameState; // Invalid or cancelled prompt
+          } else {
+            // Only one action is possible (forced capture), so execute it automatically.
+            return handleCapture(currentGameState, draggedCard, [looseCard]);
+          }
         }
 
-        if (canCapture) return handleCapture(currentGameState, draggedCard, [looseCard]);
+        // HIERARCHY CHECK 3: If not adding to a build and not a same-rank play,
+        const canBuild = playerHand.some(c => rankValue(c.rank) === potentialBuildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit));
+        if (canBuild && potentialBuildValue <= 10) {
+          return handleBuild(currentGameState, draggedCard, [looseCard], potentialBuildValue);
+        }
 
         alert("Invalid move. You cannot build or capture with these cards.");
         return currentGameState;
