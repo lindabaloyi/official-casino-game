@@ -123,16 +123,17 @@ function GameBoard({ onRestart }) {
             // Only one action is possible (forced capture), so execute it automatically.
             return handleCapture(currentGameState, draggedCard, [looseCard]);
           }
-        }
+        } else {
+          // HIERARCHY CHECK 3: This is a standard build attempt with different-rank cards.
+          const canBuild = playerHand.some(c => rankValue(c.rank) === potentialBuildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit));
+          if (canBuild && potentialBuildValue <= 10) {
+            return handleBuild(currentGameState, draggedCard, [looseCard], potentialBuildValue);
+          }
 
-        // HIERARCHY CHECK 3: If not adding to a build and not a same-rank play,
-        const canBuild = playerHand.some(c => rankValue(c.rank) === potentialBuildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit));
-        if (canBuild && potentialBuildValue <= 10) {
-          return handleBuild(currentGameState, draggedCard, [looseCard], potentialBuildValue);
+          // If we reach here, the move is invalid.
+          alert("Invalid move. You cannot build or capture with these cards.");
+          return currentGameState;
         }
-
-        alert("Invalid move. You cannot build or capture with these cards.");
-        return currentGameState;
       }
 
       // Default case if targetInfo.type is unknown

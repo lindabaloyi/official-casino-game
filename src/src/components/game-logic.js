@@ -242,8 +242,10 @@ export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo)
 
   // The new pair is added to the build.
   const newPair = [playerCard, tableCard];
+  // Sort only the new pair for consistent stacking within the combo.
+  newPair.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+  // Concatenate the new sorted pair to the end of the existing build's cards.
   const newBuildCards = [...buildToAddTo.cards, ...newPair];
-  newBuildCards.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
 
   // Create the new build object, keeping the original value and owner.
   const newBuild = {
