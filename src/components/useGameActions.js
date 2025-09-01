@@ -99,7 +99,7 @@ export const useGameActions = () => {
         );
 
         if (canCreateBuild && buildValue <= 10) {
-          return handleBuild(currentGameState, draggedCard, [[looseCard]], buildValue);
+          return handleBuild(currentGameState, draggedCard, [looseCard], buildValue);
         }
 
         alert("Invalid move. You cannot build or capture with these cards.");
