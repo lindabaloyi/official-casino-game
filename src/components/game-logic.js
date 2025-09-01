@@ -433,7 +433,6 @@ const updateTableCardsAfterCapture = (tableCards, selectedTableCards) => {
 const updatePlayerCapturesAfterCapture = (playerCaptures, currentPlayer, selectedCard, selectedTableCards) => {
   const newPlayerCaptures = JSON.parse(JSON.stringify(playerCaptures));
   const capturedGroup = [selectedCard, ...selectedTableCards.flatMap(item => item.type === 'build' ? item.cards : item)];
-  capturedGroup.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
   newPlayerCaptures[currentPlayer].push(capturedGroup);
   return newPlayerCaptures;
 };
