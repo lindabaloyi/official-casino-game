@@ -174,7 +174,7 @@ const isValidBuildType = (allCardsInBuild, buildValue) => {
 
 const createNewBuild = (playerCard, tableCardsInBuild, buildValue, currentPlayer) => {
   const allCardsInBuild = [playerCard, ...tableCardsInBuild];
-  allCardsInBuild.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+  allCardsInBuild.sort((a, b) => rankValue(a.rank) - rankValue(b.rank));
 
   if (!isValidBuildType(allCardsInBuild, buildValue)) {
     alert(`Invalid build. Cards do not form a valid build of ${buildValue}.`);
@@ -290,7 +290,7 @@ const removeBuildAndCardFromTable = (tableCards, buildToRemove, looseCardToRemov
 
 const createUpdatedBuild = (buildToAddTo, playerCard, tableCard) => {
   const newBuildCards = [...buildToAddTo.cards, playerCard, tableCard];
-  newBuildCards.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+  newBuildCards.sort((a, b) => rankValue(a.rank) - rankValue(b.rank));
 
   return {
     ...buildToAddTo,
