@@ -1,5 +1,6 @@
 import React from 'react';
 import CardStack from './CardStack'; // We assume CardStack component exists and works
+import { rankValue } from './game-logic';
 import './CapturedCards.css';
 
 const CapturedCards = React.memo(({ player, cards: capturedGroups }) => {
