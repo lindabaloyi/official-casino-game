@@ -5,7 +5,7 @@ import './TableCards.css';
 
 const BuildStack = memo(({ build, onDropStack }) => {
   const displayCards = React.useMemo(() => {
-    return [...build.cards].sort((a, b) => rankValue(a.rank) - rankValue(b.rank));
+    return [...build.cards].sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
   }, [build.cards]);
 
   const memoizedOnDropStack = useCallback(

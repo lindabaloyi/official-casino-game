@@ -91,8 +91,12 @@ export const useGameActions = () => {
           }
         }
 
+        // Calculate build value as sum of ALL cards in the build
         const buildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
-        const canCreateBuild = playerHand.some(c => rankValue(c.rank) === buildValue && (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit));
+        const canCreateBuild = playerHand.some(c =>
+          rankValue(c.rank) === buildValue &&
+          (c.rank !== draggedCard.rank || c.suit !== draggedCard.suit)
+        );
 
         if (canCreateBuild && buildValue <= 10) {
           return handleBuild(currentGameState, draggedCard, [[looseCard]], buildValue);

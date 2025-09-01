@@ -289,9 +289,8 @@ const removeBuildAndCardFromTable = (tableCards, buildToRemove, looseCardToRemov
 };
 
 const createUpdatedBuild = (buildToAddTo, playerCard, tableCard) => {
-  const newPair = [playerCard, tableCard];
-  newPair.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
-  const newBuildCards = [...buildToAddTo.cards, ...newPair];
+  const newBuildCards = [...buildToAddTo.cards, playerCard, tableCard];
+  newBuildCards.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
 
   return {
     ...buildToAddTo,
@@ -434,6 +433,7 @@ const updateTableCardsAfterCapture = (tableCards, selectedTableCards) => {
 const updatePlayerCapturesAfterCapture = (playerCaptures, currentPlayer, selectedCard, selectedTableCards) => {
   const newPlayerCaptures = JSON.parse(JSON.stringify(playerCaptures));
   const capturedGroup = [selectedCard, ...selectedTableCards.flatMap(item => item.type === 'build' ? item.cards : item)];
+  capturedGroup.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
   newPlayerCaptures[currentPlayer].push(capturedGroup);
   return newPlayerCaptures;
 };
