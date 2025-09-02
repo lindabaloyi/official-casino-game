@@ -5,6 +5,8 @@ import {
   handleCapture,
   handleTrail,
   rankValue,
+  findBaseBuilds,
+  handleBaseBuild,
 } from './game-logic';
 
 export const useGameActions = () => {
@@ -28,7 +30,9 @@ export const useGameActions = () => {
       if (action.type === 'capture') {
         return handleCapture(currentGameState, draggedCard, [targetCard]);
       } else if (action.type === 'build') {
-        return handleBuild(currentGameState, draggedCard, [[targetCard]], action.buildValue);
+        return handleBuild(currentGameState, action.payload.draggedCard, [[action.payload.targetCard]], action.buildValue);
+      } else if (action.type === 'baseBuild') {
+        return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
       }
       return currentGameState;
     });
@@ -71,23 +75,49 @@ export const useGameActions = () => {
           const remainingHand = playerHand.filter(c => c.rank !== draggedCard.rank || c.suit !== draggedCard.suit);
           const possibleActions = [];
 
-          possibleActions.push({ type: 'capture', label: `Capture ${looseCard.rank}`, payload: { draggedCard, targetCard: looseCard } });
-
-          const setBuildValue = rankValue(draggedCard.rank);
-          if (remainingHand.some(c => rankValue(c.rank) === setBuildValue)) {
-            possibleActions.push({ type: 'build', label: `Build ${setBuildValue}`, buildValue: setBuildValue, payload: { draggedCard, targetCard: looseCard } });
+          // Check for base builds
+          const baseBuildCombinations = findBaseBuilds(draggedCard, looseCard, tableCards);
+          if (baseBuildCombinations.length > 0) {
+            for (const combination of baseBuildCombinations) {
+              possibleActions.push({
+                type: 'baseBuild',
+                label: `Build ${rankValue(draggedCard.rank)} on ${looseCard.rank} with ${combination.map(c => c.rank).join('+')}`,
+                payload: { draggedCard, baseCard: looseCard, otherCardsInBuild: combination },
+              });
+            }
           }
 
-          const sumBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
-          if (sumBuildValue <= 10 && remainingHand.some(c => rankValue(c.rank) === sumBuildValue)) {
-            possibleActions.push({ type: 'build', label: `Build ${sumBuildValue}`, buildValue: sumBuildValue, payload: { draggedCard, targetCard: looseCard } });
+          // Existing capture and regular build logic (only if no base builds or if we want to offer alternatives)
+          if (possibleActions.length === 0) {
+            possibleActions.push({ type: 'capture', label: `Capture ${looseCard.rank}`, payload: { draggedCard, targetCard: looseCard } });
+
+            const setBuildValue = rankValue(draggedCard.rank);
+            if (remainingHand.some(c => rankValue(c.rank) === setBuildValue)) {
+              possibleActions.push({ type: 'build', label: `Build ${setBuildValue}`, buildValue: setBuildValue, payload: { draggedCard, targetCard: looseCard } });
+            }
+
+            const sumBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
+            if (sumBuildValue <= 10 && remainingHand.some(c => rankValue(c.rank) === sumBuildValue)) {
+              possibleActions.push({ type: 'build', label: `Build ${sumBuildValue}`, buildValue: sumBuildValue, payload: { draggedCard, targetCard: looseCard } });
+            }
           }
 
           if (possibleActions.length > 1) {
             setModalInfo({ title: 'Choose Your Action', message: `You played a ${draggedCard.rank} on a ${looseCard.rank}. What would you like to do?`, actions: possibleActions });
             return currentGameState;
+          } else if (possibleActions.length === 1) {
+            // If only one action, execute it directly
+            const action = possibleActions[0];
+            if (action.type === 'capture') {
+              return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard]);
+            } else if (action.type === 'build') {
+              return handleBuild(currentGameState, action.payload.draggedCard, [[action.payload.targetCard]], action.buildValue);
+            } else if (action.type === 'baseBuild') {
+              return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
+            }
           } else {
-            return handleCapture(currentGameState, draggedCard, [looseCard]);
+            alert("Invalid move. No valid actions found.");
+            return currentGameState;
           }
         }
 

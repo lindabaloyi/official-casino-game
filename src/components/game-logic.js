@@ -390,6 +390,90 @@ export const findValidBuilds = (selectedCard, tableCards) => {
 };
 
 /**
+ * Finds combinations of cards that, when added to a baseCard, sum up to the playedCard.value.
+ * @param {object} playedCard - The card played from the player's hand.
+ * @param {object} baseCard - The loose card on the table that will serve as the base.
+ * @param {Array} allTableCards - All loose cards currently on the table.
+ * @returns {Array} An array of combinations of other cards that form the build.
+ */
+export const findBaseBuilds = (playedCard, baseCard, allTableCards) => {
+  const targetSum = rankValue(playedCard.rank);
+  const remainingCards = allTableCards.filter(c => c.rank !== baseCard.rank || c.suit !== baseCard.suit); // Exclude the base card itself
+  const combinations = [];
+
+  // Find combinations from remainingCards that sum to targetSum - baseCard.value
+  const find = (startIndex, currentCombination, currentSum) => {
+    if (currentSum === targetSum - rankValue(baseCard.rank)) {
+      combinations.push(currentCombination);
+      return;
+    }
+    if (currentSum > targetSum - rankValue(baseCard.rank)) {
+      return;
+    }
+    for (let i = startIndex; i < remainingCards.length; i++) {
+      find(i + 1, [...currentCombination, remainingCards[i]], currentSum + rankValue(remainingCards[i].rank));
+    }
+  };
+  find(0, [], 0);
+  return combinations;
+};
+
+/**
+ * Handles creating a build using a loose card on the table as a base.
+ * @param {object} gameState - The current game state.
+ * @param {object} playerCard - The card played from the hand.
+ * @param {object} baseCard - The loose card on the table used as the base.
+ * @param {Array} otherCardsInBuild - The other cards from the table that form the build.
+ * @returns {object} The new game state.
+ */
+export const handleBaseBuild = (gameState, playerCard, baseCard, otherCardsInBuild) => {
+  const { playerHands, tableCards, currentPlayer } = gameState;
+
+  // Remove playerCard from hand
+  const newPlayerHands = JSON.parse(JSON.stringify(playerHands));
+  const hand = newPlayerHands[currentPlayer];
+  const playerCardIndex = hand.findIndex(c => c.rank === playerCard.rank && c.suit === playerCard.suit);
+  if (playerCardIndex > -1) {
+    hand.splice(playerCardIndex, 1);
+  } else {
+    console.error("Player card not found in hand for base build.");
+    return gameState;
+  }
+
+  // Remove baseCard and otherCardsInBuild from table
+  const cardsToRemoveFromTable = [baseCard, ...otherCardsInBuild];
+  const newTableCards = tableCards.filter(item => {
+    if (item.type === 'build') return true; // Keep existing builds
+    return !cardsToRemoveFromTable.some(c => c.rank === item.rank && c.suit === item.suit);
+  });
+
+  // Construct the new build's cards array for display (base at bottom, then other cards, then player card)
+  // otherCardsInBuild should be sorted ascending (smaller on top)
+  const sortedOtherCardsInBuild = [...otherCardsInBuild].sort((a, b) => rankValue(a.rank) - rankValue(b.rank));
+  const buildCards = [baseCard, ...sortedOtherCardsInBuild, playerCard];
+
+  const newBuild = {
+    buildId: `build-${Date.now()}-${Math.random()}`,
+    type: 'build',
+    cards: buildCards,
+    value: rankValue(playerCard.rank), // The value of the build is the value of the card used to build it
+    owner: currentPlayer,
+  };
+
+  newTableCards.push(newBuild);
+
+  const newState = {
+    ...gameState,
+    playerHands: newPlayerHands,
+    tableCards: newTableCards,
+    currentPlayer: (currentPlayer + 1) % 2,
+  };
+
+  logGameState(`Player ${currentPlayer + 1} created a base build with a ${playerCard.rank}`, newState);
+  return newState;
+};
+
+/**
  * Handles capturing cards from the table.
  * @param {object} gameState - The current game state.
  * @param {object} selectedCard - The card selected from the player's hand.
