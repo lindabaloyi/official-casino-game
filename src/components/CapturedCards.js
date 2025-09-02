@@ -25,7 +25,7 @@ const CapturedCards = React.memo(({ player, cards: capturedGroups }) => {
 
           const sortedCapturedTableCards = [...capturedTableCards].sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
 
-          const displayCards = [capturingCard, ...sortedCapturedTableCards];
+          const displayCards = [capturingCard, ...capturedTableCards];
 
           return (
             <CardStack

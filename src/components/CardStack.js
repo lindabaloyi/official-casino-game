@@ -35,11 +35,14 @@ const CardStack = ({ cards, onDropStack, stackId }) => {
   return (
     // The `ref={drop}` makes this whole div a drop target.
     <div ref={drop} className={`card-stack ${isActive ? 'active-drop' : ''}`}>
-      {cards.map((card, index) => (
-        <div key={index} className="card-in-stack" style={{ top: `${index * 25}px`, zIndex: index }}>
-          <Card rank={card.rank} suit={card.suit} />
-        </div>
-      ))}
+      {cards.map((card, index) => {
+        const reversedIndex = cards.length - 1 - index;
+        return (
+          <div key={index} className="card-in-stack" style={{ top: `${reversedIndex * 25}px`, zIndex: reversedIndex }}>
+            <Card rank={card.rank} suit={card.suit} />
+          </div>
+        );
+      })}
     </div>
   );
 };
