@@ -19,7 +19,25 @@ This guide provides a comprehensive overview of the Casino card game's architect
 
 ## 2. Advanced Gameplay Mechanics
 
-### 2.1 On-Table Actions
+### 2.1 The Combo Zone
+
+To facilitate complex and strategic plays without diminishing player skill, the game includes a dedicated UI component known as the **Combo Zone**. This feature is the primary interface for all multi-card actions.
+
+**Purpose:**
+The Combo Zone is a temporary staging area on the game board where players can manually assemble combinations of cards for either a Build or a Capture action. Its design philosophy is to provide a tool for players to execute their strategy, not an automated assistant that suggests or validates moves prematurely.
+
+**Functionality:**
+
+* **Activation:** The zone activates when a player drags any card into it.
+* **Manual Assembly:** The player has full control to drag cards from their hand and/or the table into the zone. The only feedback provided during this stage is the real-time sum of the cards’ values.
+* **Player Declaration:** After assembling their desired combination, the player must explicitly declare their intent by clicking one of two buttons:
+
+  * **Build:** To create a new build on the table. The action is validated to ensure the rules of building are met (e.g., one card from hand, player holds a matching capture card).
+  * **Capture:** For an immediate capture of table cards. The action is validated to ensure the player holds a hand card matching the sum of the staged table cards.
+
+This component replaces the need for separate modals or automated helpers for complex plays, ensuring a consistent and skill-based user experience.
+
+### 2.2 On-Table Combo Actions
 
 To create a seamless and intuitive experience, all complex actions are performed directly on the table by stacking cards. The game logic is designed to intelligently infer the player's intent (Capture or Build) based on the sequence of drags. If a move is invalid, the stacked cards will automatically return to their original positions.
 
@@ -50,7 +68,75 @@ A player with a `7♥` and a `9♠` (the required **capture card**) in hand want
     *   **Success:** The game analyzes the stack. Since 7 ≠ 2, it's not a capture. It hypothesizes a build. It validates that (a) the sum is 9, and (b) the player holds a separate `9♠` in their hand to capture it later. A new, permanent build of 9 is created on the table.
     *   **Failure:** If the player does not hold a 9, the move is invalid. The `7♥` returns to the player's hand.
 
+#### Scenario 3: Creating a Build by "Stealing"
 
+A player wants to create a build of 10, using cards from all available sources.
+*   **Player's Hand:** Contains a `5♥` and a `10♦` (the required **capture card**).
+*   **Table Cards:** A loose `5♣`, `7♣`, and `2♣`.
+*   **Opponent's Capture Pile:** Contains an `A♠`.
+1.  **Stack Cards:** The player creates a temporary stack on the table by dragging the `5♣` from his hand combining it with the 5 from the loose cards, then drags the loose 9 from the table and finally the `A♠` from the opponent's capture pile.
+2.  **Declare Intent:** The player clicks the **"Build"** button that appears contextually.
+*Outcome:* The logic validates that (a) the stack sums to 10 (5+5) and (7+2+1) are equal to 10, and (b) the player holds a `10♦` to capture it. The move is valid. A new build of 10 is created, and the `A♠` is successfully "stolen" from the opponent.
+
+#### Scenario 4: Capturing by "Stealing"
+
+A player wants to capture a combination of cards that includes one from the opponent's pile.
+*   **Player's Hand:** Contains a `10♦`, `2♦`.
+*   **Table Cards:** A loose `7♣`, `10♣`.
+*   **Opponent's Capture Pile:** Contains a `3♠`.
+1.  **Stack Cards:** The player drags the `7♣` to the `10♦` . They then drag the `3♠` from the opponent's capture pile and drop it onto the `7♣`, creating a temporary stack with a sum of 10.
+2.  **Execute Capture:** The player uses the `10♣` as his base number, dragging all the combo cards before also using his card in the end to capture the pile card.
+*Outcome:* The game validates the sum (7+3=10) matches the capture card (10). The capture is successful. The `10♣`, `7♣`, and the stolen `3♠` all go to the player's capture pile. with the capture card being the card on top of the stack.
+
+
+
+#### Scenario 5: Adding to an Existing Build
+
+A player wants to capture a combination of cards that includes cards from the opponent's pile.
+*   **Player's Hand:** Contains a 5♦, 9♣.
+*   **Table Cards:** A loose 4♣, 9♣.
+*   **Opponent's Capture Pile:** Contains a `3♠`.
+1.  **Stack Cards:** The player drags the `7♣` to the `10♦` . They then drag the `3♠` from the opponent's capture pile and drop it onto the `7♣`, creating a temporary stack with a sum of 10.
+2.  **Execute Capture:** The player uses the `10♣` as his base number, dragging all the combo cards before also using his card in the end to capture the pile card.
+*Outcome:* The game validates the sum (7+3=10) matches the capture card (10). The capture is successful. The `10♣`, `7♣`, and the stolen `3♠` all go to the player's capture pile. with the capture card being the card on top of the stack.
+
+A player wants to add their `5♦` and the loose card `4♣` and the loose card `9♣` combined with `A♦` from the opponents captured stack to a build of 9 they already own. Their hand also contains a `9♣` to maintain the ability to capture.
+*   **Stack Cards:** The player first drags the loose `5♣` from the table and drops it onto their own build of 9 to create augmented pile. Then , then drags the loose `4♣`, then the loose `8♣`, combined with `A♦` from the opponents captured stack to a build of 9
+*   **Execute Build:** The player then drags the `5♦` from their hand and drops it onto the augmented stack.
+*   **Validation & Outcome:**
+    *   **Success:** The game validates that (a) the player owns the build, (b) the sum of the newly added cards (4 + 5) equals the build's value (9), and (c) the player still holds a `9♣` in their hand. The build on the table is updated to include the new cards.
+    *   **Failure:** If any condition is not met, the cards return to their original positions.
+
+Player’s Hand: Contains a 5♦, 9♣.
+
+Table Cards: A loose 4♣, 9♣.
+
+Opponent’s Capture Pile: Contains an A♦.
+
+Stack Cards:
+
+The player drags the loose 5♣ from the table onto their existing build of 9 to create an augmented pile.
+
+They then drag the loose 4♣ and combine it with the A♦ taken from the opponent’s captured stack, ensuring the sum (4 + 5) aligns with the build value of 9.
+
+Execute Build:
+
+The player places the 5♦ from their hand onto the augmented build.
+
+Outcome:
+
+Success: The game validates that the player owns the build, that the new additions (4 + 5) equal 9, and that the player still holds a 9♣ in their hand to maintain capture ability. The build is updated with the new cards.
+
+Failure: If any condition is not met, the cards return to their original positions.
+
+#### Scenario 6: Capturing a Build and a Loose Card
+
+A player with a `10♦` in hand wants to capture both a build of 10 (e.g., `[6♠, 4♥]`) and a loose `10♣`.
+*   **Stack Items:** The player drags the loose `10♣` and drops it onto the existing build of 10, creating a temporary stack of items.
+*   **Execute Capture:** The player drags the capturing card (`10♦`) from their hand onto this stack.
+*   **Validation & Outcome:**
+    *   **Success:** The game validates that the hand card's value (10) matches the value of *each item* in the stack (the build is 10, the loose card is 10). All cards are moved to the player's capture pile.
+    *   **Failure:** If the values do not match, the `10♣` returns to its original position.
 
 ## 3. Core Game Logic (`src/src/components/game-logic.js`)
 
@@ -61,7 +147,7 @@ This file is the heart of the game, containing all the rules and state managemen
 The logic is organized into several pure functions that manage the game state:
 *   **Setup & Game Flow:** `initializeGame()`, `isRoundOver()`, `isGameOver()`, and `calculateScores()`.
 *   **Player Actions:** A suite of `handle...` functions like `handleTrail()`, `handleBuild()`, `handleCapture()`, `handleAddToBuild()`, and their complex counterparts for the Combo Zone.
-
+*   **Validation & Helpers:** Functions like `findValidCaptures()` and `findValidBuilds()` determine possible moves for the player.
 
 ### Game State Object:
 

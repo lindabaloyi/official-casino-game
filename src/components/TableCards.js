@@ -1,6 +1,6 @@
 import React, { memo, useCallback } from 'react';
 import CardStack from './CardStack';
-import { rankValue } from './game-logic';
+import { rankValue } from './game-logic/card-operations.js';
 import './TableCards.css';
 
 const BuildStack = memo(({ build, onDropStack }) => {
@@ -37,20 +37,25 @@ const TableCards = ({ cards, onDropOnCard }) => {
   return (
     <div className="table-cards">
       <h3>Table Cards</h3>
-      <div className="cards-container">
-        {/* Render each loose card as its own individual stack */}
-        {looseCards.map((card, index) =>
-          <CardStack
-            key={`loose-stack-${index}`}
-            stackId={`loose-stack-${index}`}
-            cards={[card]} // Each loose card is a stack of one.
-            onDropStack={(draggedItem) => memoizedOnDropOnCard(draggedItem, { type: 'loose', rank: card.rank, suit: card.suit })}
-          />
+      {/* The container now has a minimum height to prevent layout collapse when empty */}
+      <div className="cards-container" style={{ minHeight: '150px' }}>
+        {cards.length > 0 && (
+          <>
+            {/* Render each loose card as its own individual stack */}
+            {looseCards.map((card, index) =>
+              <CardStack
+                key={`loose-stack-${index}`}
+                stackId={`loose-stack-${index}`}
+                cards={[card]} // Each loose card is a stack of one.
+                onDropStack={(draggedItem) => memoizedOnDropOnCard(draggedItem, { type: 'loose', rank: card.rank, suit: card.suit })}
+              />
+            )}
+            {/* Render each build as a stack inside its own container */}
+            {builds.map((build, index) => (
+              <BuildStack key={`build-container-${index}`} build={build} onDropStack={memoizedOnDropOnCard} />
+            ))}
+          </>
         )}
-        {/* Render each build as a stack inside its own container */}
-        {builds.map((build, index) => (
-          <BuildStack key={`build-container-${index}`} build={build} onDropStack={memoizedOnDropOnCard} />
-        ))}
       </div>
     </div>
   );

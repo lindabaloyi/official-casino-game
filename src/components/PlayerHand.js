@@ -9,7 +9,7 @@ const PlayerHand = memo(({ player, cards, isCurrent, onSelectCard, selectedCard 
     <div
       className={`player-hand ${isCurrent ? 'current-player' : ''} ${isCurrent ? 'visible' : 'hidden'}`}
     >
-      <h3>{`Player ${player + 1} ${isCurrent ? 'Hand' : ''}`}</h3>
+      
       <div className="cards-container player-cards-container">
         {cards.map((card, index) => {
           const isSelected = selectedCard && card.rank === selectedCard.rank && card.suit === selectedCard.suit;
