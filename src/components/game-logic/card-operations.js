@@ -158,7 +158,7 @@ export const createCaptureStack = (capturingCard, capturedCards, opponentCard = 
     const tableCards = capturedCards.filter(card => !card.sourceType || card.sourceType !== 'opponent_capture');
     return [...tableCards, opponentCard, capturingCard];
   } else {
-    // Standard capture: [capturing card, ...captured cards]
-    return [capturingCard, ...capturedCards];
+    // Standard capture: captured cards first, capturing card last (on top)
+    return [...capturedCards, capturingCard];
   }
 };
