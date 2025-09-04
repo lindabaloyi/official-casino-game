@@ -8,8 +8,10 @@ import {
   handleTrail,
   handleBaseBuild,
   handleTemporalBuild,
+  handleAddToOpponentBuild,
 } from './game-logic/index.js';
 import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand } from './game-logic/index.js';
+import { validateAddToOpponentBuild } from './game-logic/validation.js';
 
 // Import notification system
 import { useNotifications } from './styles/NotificationSystem';
@@ -79,6 +81,8 @@ export const useGameActions = () => {
           );
         case 'baseBuild':
           return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
+        case 'addToOpponentBuild':
+          return handleAddToOpponentBuild(currentGameState, action.payload.draggedCard, action.payload.buildToAddTo);
         default:
           return currentGameState;
       }
@@ -96,6 +100,9 @@ export const useGameActions = () => {
 
     const opponentIndex = 1 - currentPlayer;
     const opponentCaptures = playerCaptures[opponentIndex] || [];
+
+    // Check if player can create new builds at all
+    const canPlayerCreateBuild = !tableCards.some(c => c.type === 'build' && c.owner === currentPlayer);
 
     // Count identical cards in player's hand
     const identicalCardCount = countIdenticalCardsInHand(playerHand, draggedCard);
@@ -118,25 +125,29 @@ export const useGameActions = () => {
         ));
 
         // Also offer build option
-        actions.push(createActionOption(
-          'build',
-          `Build ${rankValue(draggedCard.rank)}`,
-          { draggedCard, targetCard: looseCard, buildValue: rankValue(draggedCard.rank) }
-        ));
+        if (canPlayerCreateBuild) {
+          actions.push(createActionOption(
+            'build',
+            `Build ${rankValue(draggedCard.rank)}`,
+            { draggedCard, targetCard: looseCard, buildValue: rankValue(draggedCard.rank) }
+          ));
+        }
 
         // Check for same-value sum builds (2+2=4, 3+3=6, 4+4=8, 5+5=10)
         const cardValue = rankValue(draggedCard.rank);
         if (cardValue >= 2 && cardValue <= 5) {
           const sumBuildValue = cardValue * 2; // 2+2=4, 3+3=6, 4+4=8, 5+5=10
 
-          // Check if player has a card to capture this sum build later
-          const canCaptureSumBuild = remainingHand.some(c => rankValue(c.rank) === sumBuildValue);
-          if (canCaptureSumBuild) {
-            actions.push(createActionOption(
-              'build',
-              `Build ${sumBuildValue} (${draggedCard.rank} + ${looseCard.rank})`,
-              { draggedCard, targetCard: looseCard, buildValue: sumBuildValue }
-            ));
+          if (canPlayerCreateBuild) {
+            // Check if player has a card to capture this sum build later
+            const canCaptureSumBuild = remainingHand.some(c => rankValue(c.rank) === sumBuildValue);
+            if (canCaptureSumBuild) {
+              actions.push(createActionOption(
+                'build',
+                `Build ${sumBuildValue} (${draggedCard.rank} + ${looseCard.rank})`,
+                { draggedCard, targetCard: looseCard, buildValue: sumBuildValue }
+              ));
+            }
           }
         }
       }
@@ -153,7 +164,7 @@ export const useGameActions = () => {
     }
 
     // Check for base builds (complex multi-card builds) - only if not a direct capture scenario
-    if (rankValue(draggedCard.rank) !== rankValue(looseCard.rank)) {
+    if (canPlayerCreateBuild && rankValue(draggedCard.rank) !== rankValue(looseCard.rank)) {
       const baseBuildCombinations = findBaseBuilds(draggedCard, looseCard, tableCards);
       baseBuildCombinations.forEach(combination => {
         actions.push(createActionOption(
@@ -165,8 +176,8 @@ export const useGameActions = () => {
     }
 
     // Check for sum build (different value cards that add up)
-    if (rankValue(draggedCard.rank) !== rankValue(looseCard.rank)) {
-      const sumBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
+    if (canPlayerCreateBuild && rankValue(draggedCard.rank) !== rankValue(looseCard.rank)) {
+      const sumBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);      
       if (sumBuildValue <= 10 && remainingHand.some(c => rankValue(c.rank) === sumBuildValue)) {
         // Determine stacking order: bigger card at bottom, smaller card on top
         const draggedValue = rankValue(draggedCard.rank);
@@ -261,13 +272,33 @@ export const useGameActions = () => {
           return currentGameState;
         }
 
+        const playerHand = playerHands[currentPlayer];
+
+        // Case 1: Direct Capture
         if (rankValue(draggedCard.rank) === buildToDropOn.value) {
-          const newState = handleCapture(currentGameState, draggedCard, [buildToDropOn]);
-          return newState;
-        } else {
-          showError(`Cannot capture build of ${buildToDropOn.value} with a ${draggedCard.rank}.`);
+          return handleCapture(currentGameState, draggedCard, [buildToDropOn]);
+        }
+
+        // Case 2: Interacting with an opponent's build
+        if (buildToDropOn.owner !== currentPlayer) {
+          const validation = validateAddToOpponentBuild(buildToDropOn, draggedCard, playerHand, tableCards, currentPlayer);
+          if (validation.valid) {
+            // For now, auto-execute. Could be a modal option.
+            return handleAddToOpponentBuild(currentGameState, draggedCard, buildToDropOn);
+          } else {
+            showError(validation.message);
+            return currentGameState;
+          }
+        }
+
+        // Case 3: Interacting with your own build (placeholder for future)
+        if (buildToDropOn.owner === currentPlayer) {
+          showError("You cannot add this card to your own build yet.");
           return currentGameState;
         }
+
+        showError(`Invalid move on build of ${buildToDropOn.value}.`);
+        return currentGameState;
       };
 
       if (targetInfo.type === 'loose') {
@@ -279,7 +310,7 @@ export const useGameActions = () => {
         return currentGameState;
       }
     });
-  }, [showError, setModalInfo]);
+  }, [showError, setModalInfo, handleModalAction]);
 
   // Helper function to execute actions within setGameState
   const executeAction = (currentGameState, action) => {
@@ -299,6 +330,8 @@ export const useGameActions = () => {
         );
       case 'baseBuild':
         return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
+      case 'addToOpponentBuild':
+        return handleAddToOpponentBuild(currentGameState, action.payload.draggedCard, action.payload.buildToAddTo);
       default:
         return currentGameState;
     }

@@ -38,7 +38,8 @@ export {
 export {
   validateBuild,
   validateTrail,
-  validateAddToBuild
+  validateAddToBuild,
+  validateAddToOpponentBuild
 } from './validation.js';
 
 
@@ -49,5 +50,6 @@ export {
   handleCapture,
   handleBaseBuild,
   handleAddToBuild,
-  handleTemporalBuild
+  handleTemporalBuild,
+  handleAddToOpponentBuild
 } from './game-actions.js';

@@ -1,5 +1,5 @@
 import { updateGameState, nextPlayer } from './game-state.js';
-import { removeCardFromHand, removeCardsFromTable, sortCardsByRank, calculateCardSum, generateBuildId, findOpponentMatchingCards, createCaptureStack } from './card-operations.js';
+import { rankValue, removeCardFromHand, removeCardsFromTable, sortCardsByRank, calculateCardSum, generateBuildId, findOpponentMatchingCards, createCaptureStack } from './card-operations.js';
 import { validateTrail, validateBuild, validateAddToBuild } from './validation.js';
 import { logGameState } from './game-state.js';
 
@@ -59,6 +59,7 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
     cards: allCardsInBuild,
     value: buildValue,
     owner: currentPlayer,
+    isExtendable: true,
   };
 
   // Update game state
@@ -155,6 +156,7 @@ export const handleBaseBuild = (gameState, playerCard, baseCard, otherCardsInBui
     cards: buildCards,
     value: playerCard.value,
     owner: currentPlayer,
+    isExtendable: false,
   };
 
   newTableCards.push(newBuild);
@@ -165,6 +167,45 @@ export const handleBaseBuild = (gameState, playerCard, baseCard, otherCardsInBui
   });
 
   logGameState(`Player ${currentPlayer + 1} created a base build with a ${playerCard.rank}`, nextPlayer(newState));
+  return nextPlayer(newState);
+};
+
+export const handleAddToOpponentBuild = (gameState, playerCard, buildToAddTo) => {
+  const { playerHands, tableCards, currentPlayer } = gameState;
+
+  // Validation is handled before this function is called.
+
+  const newBuildValue = buildToAddTo.value + rankValue(playerCard.rank);
+
+  // Create the new set of cards for the build, sorted descending for display
+  const newBuildCards = [...buildToAddTo.cards, playerCard];
+  const sortedCards = newBuildCards.sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+
+  const newBuild = {
+    buildId: generateBuildId(),
+    type: 'build',
+    cards: sortedCards,
+    value: newBuildValue,
+    owner: currentPlayer, // Ownership is transferred to the current player
+    isExtendable: false, // Extended builds cannot be extended further
+  };
+
+  // Update game state
+  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
+  if (!newPlayerHands) {
+    return gameState;
+  }
+
+  // Remove old build from table and add the new one
+  const newTableCards = removeCardsFromTable(tableCards, [buildToAddTo]);
+  newTableCards.push(newBuild);
+
+  const newState = updateGameState(gameState, {
+    playerHands: newPlayerHands,
+    tableCards: newTableCards,
+  });
+
+  logGameState(`Player ${currentPlayer + 1} extended opponent's build to ${newBuild.value}`, nextPlayer(newState));
   return nextPlayer(newState);
 };
 

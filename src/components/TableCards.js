@@ -54,8 +54,8 @@ const TableCards = ({ cards, onDropOnCard }) => {
               />
             )}
             {/* Render each build as a stack inside its own container */}
-            {builds.map((build, index) => (
-              <BuildStack key={`build-container-${index}`} build={build} onDropStack={memoizedOnDropOnCard} />
+            {builds.map((build) => (
+              <BuildStack key={build.buildId} build={build} onDropStack={memoizedOnDropOnCard} />
             ))}
           </>
         )}
