@@ -7,8 +7,9 @@ import {
   handleCapture,
   handleTrail,
   handleBaseBuild,
+  handleTemporalBuild,
 } from './game-logic/index.js';
-import { rankValue, findBaseBuilds } from './game-logic/index.js';
+import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand } from './game-logic/index.js';
 
 // Import notification system
 import { useNotifications } from './styles/NotificationSystem';
@@ -22,6 +23,13 @@ export const useGameActions = () => {
     setGameState(currentGameState => {
       if (player !== currentGameState.currentPlayer) {
         showError("It's not your turn!");
+        return currentGameState;
+      }
+
+      // Check if this should be a capture instead of a trail
+      const matchingTableCard = currentGameState.tableCards.find(c => !c.type && c.rank === card.rank);
+      if (matchingTableCard) {
+        showError(`You cannot trail a ${card.rank} because one is already on the table. Try dragging onto the specific card to capture it.`);
         return currentGameState;
       }
 
@@ -58,6 +66,8 @@ export const useGameActions = () => {
       switch (action.type) {
         case 'capture':
           return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard]);
+        case 'enhanced_capture':
+          return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.payload.opponentCard);
         case 'build':
           return handleBuild(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.buildValue);
         case 'baseBuild':
@@ -71,44 +81,68 @@ export const useGameActions = () => {
 
 
   // Helper function to generate possible actions for loose card drops
-  const generatePossibleActions = (draggedCard, looseCard, playerHand, tableCards) => {
+  const generatePossibleActions = (draggedCard, looseCard, playerHand, tableCards, playerCaptures, currentPlayer) => {
     const actions = [];
     const remainingHand = playerHand.filter(c =>
       c.rank !== draggedCard.rank || c.suit !== draggedCard.suit
     );
 
-    // Check for base builds
-    const baseBuildCombinations = findBaseBuilds(draggedCard, looseCard, tableCards);
-    baseBuildCombinations.forEach(combination => {
-      actions.push(createActionOption(
-        'baseBuild',
-        `Build ${rankValue(draggedCard.rank)} on ${looseCard.rank} with ${combination.map(c => c.rank).join('+')}`,
-        { draggedCard, baseCard: looseCard, otherCardsInBuild: combination }
-      ));
-    });
+    const opponentIndex = 1 - currentPlayer;
+    const opponentCaptures = playerCaptures[opponentIndex] || [];
 
-    // Add basic capture and build options if no base builds
-    if (actions.length === 0) {
-      // Check for simple capture
-      if (rankValue(draggedCard.rank) === rankValue(looseCard.rank)) {
+    // Count identical cards in player's hand
+    const identicalCardCount = countIdenticalCardsInHand(playerHand, draggedCard);
+
+    // Check for direct capture first (highest priority)
+    if (rankValue(draggedCard.rank) === rankValue(looseCard.rank)) {
+      // Strategic choice: If player has only one identical card, must capture
+      if (identicalCardCount === 1) {
         actions.push(createActionOption(
           'capture',
           `Capture ${looseCard.rank}`,
           { draggedCard, targetCard: looseCard }
         ));
-      }
+      } else {
+        // Player has multiple identical cards - offer choice between capture and build
+        actions.push(createActionOption(
+          'capture',
+          `Capture ${looseCard.rank}`,
+          { draggedCard, targetCard: looseCard }
+        ));
 
-      // Check for set build
-      const setBuildValue = rankValue(draggedCard.rank);
-      if (remainingHand.some(c => rankValue(c.rank) === setBuildValue)) {
+        // Also offer build option
         actions.push(createActionOption(
           'build',
-          `Build ${setBuildValue}`,
-          { draggedCard, targetCard: looseCard, buildValue: setBuildValue }
+          `Build ${rankValue(draggedCard.rank)}`,
+          { draggedCard, targetCard: looseCard, buildValue: rankValue(draggedCard.rank) }
         ));
       }
 
-      // Check for sum build
+      // Check for enhanced capture using opponent's cards
+      const opponentMatchingCards = findOpponentMatchingCards(opponentCaptures, draggedCard);
+      opponentMatchingCards.forEach(opponentCard => {
+        actions.push(createActionOption(
+          'enhanced_capture',
+          `Capture ${looseCard.rank} using opponent's ${opponentCard.rank}`,
+          { draggedCard, targetCard: looseCard, opponentCard }
+        ));
+      });
+    }
+
+    // Check for base builds (complex multi-card builds) - only if not a direct capture scenario
+    if (rankValue(draggedCard.rank) !== rankValue(looseCard.rank)) {
+      const baseBuildCombinations = findBaseBuilds(draggedCard, looseCard, tableCards);
+      baseBuildCombinations.forEach(combination => {
+        actions.push(createActionOption(
+          'baseBuild',
+          `Build ${rankValue(draggedCard.rank)} on ${looseCard.rank} with ${combination.map(c => c.rank).join('+')}`,
+          { draggedCard, baseCard: looseCard, otherCardsInBuild: combination }
+        ));
+      });
+    }
+
+    // Check for sum build (only if not a direct capture and no build options already exist)
+    if (rankValue(draggedCard.rank) !== rankValue(looseCard.rank) && actions.length === 0) {
       const sumBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
       if (sumBuildValue <= 10 && remainingHand.some(c => rankValue(c.rank) === sumBuildValue)) {
         actions.push(createActionOption(
@@ -128,56 +162,105 @@ export const useGameActions = () => {
       return;
     }
 
-    const { currentPlayer, playerHands, tableCards } = gameState;
-    const draggedCard = draggedItem.card;
+    // Get fresh game state for turn validation
+    setGameState(currentGameState => {
+      const { currentPlayer, playerHands, tableCards } = currentGameState;
+      const draggedCard = draggedItem.card;
 
-    if (draggedItem.player !== currentPlayer) {
-      showError("It's not your turn!");
-      return;
+      console.log(`Drop attempt - Dragged Player: ${draggedItem.player}, Current Player: ${currentPlayer}, Card: ${draggedCard.rank}, Target: ${targetInfo.type} ${targetInfo.cardId || `${targetInfo.rank}-${targetInfo.suit}`}`);
+
+      if (draggedItem.player !== currentPlayer) {
+        console.error(`Drop turn validation failed - dragged player: ${draggedItem.player}, current player: ${currentPlayer}`);
+        showError("It's not your turn!");
+        return currentGameState;
+      }
+
+      // Handler for dropping on a loose card
+      const handleLooseCardDrop = () => {
+        const playerHand = playerHands[currentPlayer];
+
+        // Try to find target card using cardId first (more reliable), then fallback to rank/suit
+        let targetCard = null;
+        if (targetInfo.cardId) {
+          targetCard = tableCards.find(c => !c.type && `${c.rank}-${c.suit}` === targetInfo.cardId);
+        }
+        if (!targetCard) {
+          // Fallback to rank/suit matching
+          targetCard = tableCards.find(c => !c.type && c.rank === targetInfo.rank && c.suit === targetInfo.suit);
+        }
+
+        if (!targetCard) {
+          console.warn(`Target card not found on table. Looking for: ${targetInfo.cardId || `${targetInfo.rank}-${targetInfo.suit}`}`);
+          console.log('Current table cards:', tableCards.map(c => c.type ? `Build(${c.value})` : `${c.rank}${c.suit}`));
+          showError("Target card not found on table. The card may have already been captured.");
+          return currentGameState;
+        }
+
+        const possibleActions = generatePossibleActions(draggedCard, targetCard, playerHand, tableCards, currentGameState.playerCaptures, currentPlayer);
+
+        if (possibleActions.length === 0) {
+          showError("No valid moves with this card combination.");
+          return currentGameState;
+        } else if (possibleActions.length === 1) {
+          // Execute action immediately
+          const newState = executeAction(currentGameState, possibleActions[0]);
+          return newState;
+        } else {
+          // Show modal for user to choose
+          setModalInfo({
+            title: 'Choose Your Action',
+            message: `What would you like to do with the ${draggedCard.rank} and ${targetCard.rank}?`,
+            actions: possibleActions,
+          });
+          return currentGameState;
+        }
+      };
+
+      // Handler for dropping on a build
+      const handleBuildDrop = () => {
+        const buildToDropOn = tableCards.find(b => b.type === 'build' && b.buildId === targetInfo.buildId);
+        if (!buildToDropOn) {
+          console.warn(`Build not found on table. Looking for buildId: ${targetInfo.buildId}`);
+          console.log('Current builds:', tableCards.filter(c => c.type === 'build').map(b => b.buildId));
+          showError("Target build not found on table. The build may have already been captured.");
+          return currentGameState;
+        }
+
+        if (rankValue(draggedCard.rank) === buildToDropOn.value) {
+          const newState = handleCapture(currentGameState, draggedCard, [buildToDropOn]);
+          return newState;
+        } else {
+          showError(`Cannot capture build of ${buildToDropOn.value} with a ${draggedCard.rank}.`);
+          return currentGameState;
+        }
+      };
+
+      if (targetInfo.type === 'loose') {
+        return handleLooseCardDrop();
+      } else if (targetInfo.type === 'build') {
+        return handleBuildDrop();
+      } else {
+        showError("Unknown drop target type.");
+        return currentGameState;
+      }
+    });
+  }, [showError, setModalInfo]);
+
+  // Helper function to execute actions within setGameState
+  const executeAction = (currentGameState, action) => {
+    switch (action.type) {
+      case 'capture':
+        return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard]);
+      case 'enhanced_capture':
+        return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.payload.opponentCard);
+      case 'build':
+        return handleBuild(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.buildValue);
+      case 'baseBuild':
+        return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
+      default:
+        return currentGameState;
     }
+  };
 
-    // Handler for dropping on a loose card
-    const handleLooseCardDrop = () => {
-      const playerHand = playerHands[currentPlayer];
-      const targetCard = tableCards.find(c => !c.type && c.rank === targetInfo.rank && c.suit === targetInfo.suit);
-
-      if (!targetCard) {
-        showError("Target card not found on table.");
-        return;
-      }
-
-      const possibleActions = generatePossibleActions(draggedCard, targetCard, playerHand, tableCards);
-
-      if (possibleActions.length === 0) {
-        showError("No valid moves with this card combination.");
-      } else if (possibleActions.length === 1) {
-        handleModalAction(possibleActions[0]);
-      } else {
-        setModalInfo({
-          title: 'Choose Your Action',
-          message: `What would you like to do with the ${draggedCard.rank} and ${targetCard.rank}?`,
-          actions: possibleActions,
-        });
-      }
-    };
-
-    // Handler for dropping on a build
-    const handleBuildDrop = () => {
-      // For now, assume dropping on a build is always a capture attempt.
-      // More complex logic for "add to build" would go here.
-      const buildToDropOn = tableCards.find(b => b.type === 'build' && b.buildId === targetInfo.buildId);
-      if (buildToDropOn && rankValue(draggedCard.rank) === buildToDropOn.value) {
-        handleModalAction({ type: 'capture', payload: { draggedCard, targetCard: buildToDropOn } });
-      } else {
-        showError(`Cannot capture build of ${buildToDropOn.value} with a ${draggedCard.rank}.`);
-      }
-    };
-
-    if (targetInfo.type === 'loose') handleLooseCardDrop();
-    else if (targetInfo.type === 'build') handleBuildDrop();
-    else showError("Unknown drop target type.");
-
-  }, [gameState, handleModalAction, setModalInfo, showError]);
-
-  return { gameState, modalInfo, handleTrailCard, handleDropOnCard, handleModalAction, setModalInfo };
+  return { gameState, modalInfo, handleTrailCard, handleDropOnCard, handleModalAction, setModalInfo, executeAction };
 };

@@ -22,7 +22,10 @@ export {
   sortCardsByRank,
   calculateCardSum,
   generateBuildId,
-  isValidBuildType
+  isValidBuildType,
+  findOpponentMatchingCards,
+  countIdenticalCardsInHand,
+  createCaptureStack
 } from './card-operations.js';
 
 // Optimized algorithms
@@ -45,5 +48,6 @@ export {
   handleBuild,
   handleCapture,
   handleBaseBuild,
-  handleAddToBuild
+  handleAddToBuild,
+  handleTemporalBuild
 } from './game-actions.js';

@@ -106,17 +106,16 @@ function GameBoard({ onRestart }) {
         if (monitor.didDrop()) {
           return;
         }
-        const result = handleTrailCard(item.card, item.player);
-        if (result !== gameState) {
-          showInfo(`Player ${item.player + 1} trailed a ${item.card.rank}`);
-        }
+        console.log(`Trail drop - Player: ${item.player}, Card: ${item.card.rank}`);
+        handleTrailCard(item.card, item.player);
+        // Note: handleTrailCard now handles state updates internally
       },
       collect: (monitor) => ({
         isOver: monitor.isOver(),
         canDrop: monitor.canDrop(),
       }),
     }),
-    [handleTrailCard, gameState, showInfo]
+    [handleTrailCard, showInfo]
   );
 
   const isActive = isOver && canDrop;

@@ -1,5 +1,5 @@
 import { updateGameState, nextPlayer } from './game-state.js';
-import { removeCardFromHand, removeCardsFromTable, sortCardsByRank, calculateCardSum, generateBuildId } from './card-operations.js';
+import { removeCardFromHand, removeCardsFromTable, sortCardsByRank, calculateCardSum, generateBuildId, findOpponentMatchingCards, createCaptureStack } from './card-operations.js';
 import { validateTrail, validateBuild, validateAddToBuild } from './validation.js';
 import { logGameState } from './game-state.js';
 
@@ -150,7 +150,7 @@ export const handleBaseBuild = (gameState, playerCard, baseCard, otherCardsInBui
   return nextPlayer(newState);
 };
 
-export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
+export const handleCapture = (gameState, selectedCard, selectedTableCards, opponentCard = null) => {
   const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
 
   // Remove capturing card from hand
@@ -170,11 +170,27 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
     }
   });
 
+  // Handle opponent's card removal if involved
+  let newOpponentCaptures = [...playerCaptures];
+  if (opponentCard) {
+    const opponentIndex = 1 - currentPlayer; // Get opponent's index
+    newOpponentCaptures[opponentIndex] = playerCaptures[opponentIndex].map(group =>
+      group.filter(card =>
+        !(card.rank === opponentCard.rank && card.suit === opponentCard.suit)
+      )
+    ).filter(group => group.length > 0); // Remove empty groups
+  }
+
+  // Flatten captured cards from builds and loose cards
+  const flattenedCapturedCards = selectedTableCards.flatMap(item =>
+    item.type === 'build' ? item.cards : [item]
+  );
+
+  // Create properly ordered capture stack
+  const capturedGroup = createCaptureStack(selectedCard, flattenedCapturedCards, opponentCard);
+
   // Add captured cards to player's captures
-  const newPlayerCaptures = [...playerCaptures];
-  const capturedGroup = [selectedCard, ...selectedTableCards.flatMap(item =>
-    item.type === 'build' ? item.cards : item
-  )];
+  const newPlayerCaptures = [...newOpponentCaptures];
   newPlayerCaptures[currentPlayer] = [...newPlayerCaptures[currentPlayer], capturedGroup];
 
   const newState = updateGameState(gameState, {
@@ -183,6 +199,41 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards) => {
     playerCaptures: newPlayerCaptures,
   });
 
-  logGameState(`Player ${currentPlayer + 1} captured with a ${selectedCard.rank}`, nextPlayer(newState));
+  const captureDescription = opponentCard
+    ? `Player ${currentPlayer + 1} captured with a ${selectedCard.rank} (using opponent's ${opponentCard.rank})`
+    : `Player ${currentPlayer + 1} captured with a ${selectedCard.rank}`;
+
+  logGameState(captureDescription, nextPlayer(newState));
   return nextPlayer(newState);
+};
+
+/**
+ * Creates a temporal build using opponent's card for enhanced capture setup.
+ * @param {object} gameState - The current game state.
+ * @param {object} opponentCard - The opponent's card to use.
+ * @param {object} tableCard - The table card to combine with.
+ * @returns {object} The updated game state.
+ */
+export const handleTemporalBuild = (gameState, opponentCard, tableCard) => {
+  const { tableCards, currentPlayer } = gameState;
+
+  // Create temporal build with opponent's card and table card
+  const temporalBuild = {
+    buildId: generateBuildId(),
+    type: 'temporal_build',
+    cards: [opponentCard, tableCard],
+    value: rankValue(opponentCard.rank),
+    owner: currentPlayer,
+    isTemporal: true
+  };
+
+  // Add temporal build to table
+  const newTableCards = [...tableCards, temporalBuild];
+
+  const newState = updateGameState(gameState, {
+    tableCards: newTableCards,
+  });
+
+  logGameState(`Player ${currentPlayer + 1} created temporal build with opponent's ${opponentCard.rank}`, newState);
+  return newState;
 };

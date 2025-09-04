@@ -107,3 +107,58 @@ export const isValidBuildType = (cards, targetValue) => {
   const isSetBuild = cards.every(c => rankValue(c.rank) === targetValue);
   return (isSumBuild || isSetBuild) && targetValue <= 10;
 };
+
+/**
+ * Finds matching cards in opponent's capture pile for enhanced captures.
+ * @param {Array} opponentCaptures - The opponent's captured card groups.
+ * @param {object} targetCard - The card to match (from table or hand).
+ * @returns {Array} Array of matching cards from opponent's captures.
+ */
+export const findOpponentMatchingCards = (opponentCaptures, targetCard) => {
+  const matchingCards = [];
+
+  // Search through all capture groups
+  opponentCaptures.forEach(group => {
+    group.forEach(card => {
+      if (card.rank === targetCard.rank) {
+        matchingCards.push({
+          ...card,
+          sourceGroup: group,
+          sourceType: 'opponent_capture'
+        });
+      }
+    });
+  });
+
+  return matchingCards;
+};
+
+/**
+ * Counts identical cards in player's hand.
+ * @param {Array} playerHand - The player's hand.
+ * @param {object} targetCard - The card to count matches for.
+ * @returns {number} Number of identical cards in hand.
+ */
+export const countIdenticalCardsInHand = (playerHand, targetCard) => {
+  return playerHand.filter(card =>
+    card.rank === targetCard.rank
+  ).length;
+};
+
+/**
+ * Creates proper capture stack order according to Casino rules.
+ * @param {object} capturingCard - The card used to capture.
+ * @param {Array} capturedCards - The cards being captured.
+ * @param {object} opponentCard - Optional opponent's card involved.
+ * @returns {Array} Properly ordered capture stack.
+ */
+export const createCaptureStack = (capturingCard, capturedCards, opponentCard = null) => {
+  if (opponentCard) {
+    // When opponent's card is involved: [table card, opponent's card, player's card]
+    const tableCards = capturedCards.filter(card => !card.sourceType || card.sourceType !== 'opponent_capture');
+    return [...tableCards, opponentCard, capturingCard];
+  } else {
+    // Standard capture: [capturing card, ...captured cards]
+    return [capturingCard, ...capturedCards];
+  }
+};

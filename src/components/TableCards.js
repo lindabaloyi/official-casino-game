@@ -44,10 +44,15 @@ const TableCards = ({ cards, onDropOnCard }) => {
             {/* Render each loose card as its own individual stack */}
             {looseCards.map((card, index) =>
               <CardStack
-                key={`loose-stack-${index}`}
-                stackId={`loose-stack-${index}`}
+                key={`loose-stack-${card.rank}-${card.suit}`}
+                stackId={`loose-stack-${card.rank}-${card.suit}`}
                 cards={[card]} // Each loose card is a stack of one.
-                onDropStack={(draggedItem) => memoizedOnDropOnCard(draggedItem, { type: 'loose', rank: card.rank, suit: card.suit })}
+                onDropStack={(draggedItem) => memoizedOnDropOnCard(draggedItem, {
+                  type: 'loose',
+                  rank: card.rank,
+                  suit: card.suit,
+                  cardId: `${card.rank}-${card.suit}`
+                })}
               />
             )}
             {/* Render each build as a stack inside its own container */}
