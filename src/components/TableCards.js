@@ -4,10 +4,6 @@ import { rankValue } from './game-logic/card-operations.js';
 import './TableCards.css';
 
 const BuildStack = memo(({ build, onDropStack }) => {
-  const displayCards = React.useMemo(() => {
-    return [...build.cards].sort((a, b) => rankValue(a.rank) - rankValue(b.rank));
-  }, [build.cards]);
-
   const memoizedOnDropStack = useCallback(
     (draggedItem) => onDropStack(draggedItem, { type: 'build', buildId: build.buildId }),
     [onDropStack, build.buildId]
@@ -17,7 +13,7 @@ const BuildStack = memo(({ build, onDropStack }) => {
     <div className="build">
       <CardStack
         stackId={build.buildId}
-        cards={displayCards}
+        cards={build.cards}
         onDropStack={memoizedOnDropStack}
         buildValue={build.value}
         isBuild={true}

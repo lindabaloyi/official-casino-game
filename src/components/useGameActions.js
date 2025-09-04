@@ -177,11 +177,6 @@ export const useGameActions = () => {
         // For display: smaller card should be LAST in array (on top)
         // biggerCard goes first (bottom), smallerCard goes last (top)
 
-        console.log(`Build creation: dragged=${draggedCard.rank}(${draggedValue}), target=${looseCard.rank}(${targetValue})`);
-        console.log(`Math.max result: ${Math.max(draggedValue, targetValue)}`);
-        console.log(`Stack order: bottom=${biggerCard.rank}, top=${smallerCard.rank}`);
-        console.log(`Cards being sent: bigger=${biggerCard.rank}, smaller=${smallerCard.rank}`);
-
         actions.push(createActionOption(
           'build',
           `Build ${sumBuildValue} (${biggerCard.rank} + ${smallerCard.rank})`,
