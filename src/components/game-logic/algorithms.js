@@ -13,6 +13,11 @@ import { rankValue } from './card-operations.js';
  * @returns {Array} Array of valid combinations that sum to the target.
  */
 export const findCombinationsDP = (cards, target) => {
+  // Validate target to prevent invalid array creation
+  if (target < 0) {
+    return [];
+  }
+
   // Initialize DP table: dp[i] will contain all combinations that sum to i
   const dp = Array(target + 1).fill().map(() => []);
 

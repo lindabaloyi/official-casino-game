@@ -19,6 +19,8 @@ const BuildStack = memo(({ build, onDropStack }) => {
         stackId={build.buildId}
         cards={displayCards}
         onDropStack={memoizedOnDropStack}
+        buildValue={build.value}
+        isBuild={true}
       />
       <div className="build-owner-tag">
         P{build.owner + 1}

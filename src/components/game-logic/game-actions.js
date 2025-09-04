@@ -30,25 +30,33 @@ export const handleTrail = (gameState, card) => {
   return nextPlayer(newState);
 };
 
-export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue) => {
+export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue, biggerCard, smallerCard) => {
   const { playerHands, tableCards, currentPlayer } = gameState;
   const playerHand = playerHands[currentPlayer];
 
   // Validate the build
-  const validation = validateBuild(playerHand, playerCard, buildValue);
+  const validation = validateBuild(playerHand, playerCard, buildValue, tableCards, currentPlayer);
   if (!validation.valid) {
     console.warn(validation.message);
     return gameState;
   }
 
-  // Create the build
-  const allCardsInBuild = [playerCard, ...tableCardsInBuild];
-  const sortedCards = sortCardsByRank(allCardsInBuild);
+  let allCardsInBuild;
+
+  // Handle stacking order based on build type
+  if (biggerCard && smallerCard) {
+    // Sum build: bigger card at bottom, smaller card on top
+    allCardsInBuild = [biggerCard, smallerCard];
+  } else {
+    // Same-value build: table cards at bottom (sorted), player's card on top
+    const sortedTableCards = sortCardsByRank(tableCardsInBuild);
+    allCardsInBuild = [...sortedTableCards, playerCard];
+  }
 
   const newBuild = {
     buildId: generateBuildId(),
     type: 'build',
-    cards: sortedCards,
+    cards: allCardsInBuild,
     value: buildValue,
     owner: currentPlayer,
   };
@@ -127,9 +135,19 @@ export const handleBaseBuild = (gameState, playerCard, baseCard, otherCardsInBui
   const cardsToRemoveFromTable = [baseCard, ...otherCardsInBuild];
   const newTableCards = removeCardsFromTable(tableCards, cardsToRemoveFromTable);
 
-  // Construct the new build's cards array (base at bottom, then other cards, then player card)
-  const sortedOtherCards = sortCardsByRank(otherCardsInBuild);
-  const buildCards = [baseCard, ...sortedOtherCards, playerCard];
+  // Construct the new build's cards array with proper combination grouping
+  // otherCardsInBuild is an array of combinations, each combination is an array of cards
+  let buildCards = [baseCard]; // Start with base card
+
+  // Process each combination: sort within combination (bigger to smaller) and add to build
+  otherCardsInBuild.forEach(combination => {
+    // Sort each combination by rank (bigger to smaller for proper stacking)
+    const sortedCombination = [...combination].sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+    buildCards = [...buildCards, ...sortedCombination];
+  });
+
+  // Add player's card on top
+  buildCards = [...buildCards, playerCard];
 
   const newBuild = {
     buildId: generateBuildId(),

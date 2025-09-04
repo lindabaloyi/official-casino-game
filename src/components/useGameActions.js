@@ -69,7 +69,14 @@ export const useGameActions = () => {
         case 'enhanced_capture':
           return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.payload.opponentCard);
         case 'build':
-          return handleBuild(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.buildValue);
+          return handleBuild(
+            currentGameState,
+            action.payload.draggedCard,
+            [action.payload.targetCard],
+            action.payload.buildValue,
+            action.payload.biggerCard,
+            action.payload.smallerCard
+          );
         case 'baseBuild':
           return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
         default:
@@ -116,6 +123,22 @@ export const useGameActions = () => {
           `Build ${rankValue(draggedCard.rank)}`,
           { draggedCard, targetCard: looseCard, buildValue: rankValue(draggedCard.rank) }
         ));
+
+        // Check for same-value sum builds (2+2=4, 3+3=6, 4+4=8, 5+5=10)
+        const cardValue = rankValue(draggedCard.rank);
+        if (cardValue >= 2 && cardValue <= 5) {
+          const sumBuildValue = cardValue * 2; // 2+2=4, 3+3=6, 4+4=8, 5+5=10
+
+          // Check if player has a card to capture this sum build later
+          const canCaptureSumBuild = remainingHand.some(c => rankValue(c.rank) === sumBuildValue);
+          if (canCaptureSumBuild) {
+            actions.push(createActionOption(
+              'build',
+              `Build ${sumBuildValue} (${draggedCard.rank} + ${looseCard.rank})`,
+              { draggedCard, targetCard: looseCard, buildValue: sumBuildValue }
+            ));
+          }
+        }
       }
 
       // Check for enhanced capture using opponent's cards
@@ -141,14 +164,34 @@ export const useGameActions = () => {
       });
     }
 
-    // Check for sum build (only if not a direct capture and no build options already exist)
-    if (rankValue(draggedCard.rank) !== rankValue(looseCard.rank) && actions.length === 0) {
+    // Check for sum build (different value cards that add up)
+    if (rankValue(draggedCard.rank) !== rankValue(looseCard.rank)) {
       const sumBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
       if (sumBuildValue <= 10 && remainingHand.some(c => rankValue(c.rank) === sumBuildValue)) {
+        // Determine stacking order: bigger card at bottom, smaller card on top
+        const draggedValue = rankValue(draggedCard.rank);
+        const targetValue = rankValue(looseCard.rank);
+        const biggerCard = Math.max(draggedValue, targetValue) === draggedValue ? draggedCard : looseCard;
+        const smallerCard = Math.max(draggedValue, targetValue) === draggedValue ? looseCard : draggedCard;
+
+        // For display: smaller card should be LAST in array (on top)
+        // biggerCard goes first (bottom), smallerCard goes last (top)
+
+        console.log(`Build creation: dragged=${draggedCard.rank}(${draggedValue}), target=${looseCard.rank}(${targetValue})`);
+        console.log(`Math.max result: ${Math.max(draggedValue, targetValue)}`);
+        console.log(`Stack order: bottom=${biggerCard.rank}, top=${smallerCard.rank}`);
+        console.log(`Cards being sent: bigger=${biggerCard.rank}, smaller=${smallerCard.rank}`);
+
         actions.push(createActionOption(
           'build',
-          `Build ${sumBuildValue}`,
-          { draggedCard, targetCard: looseCard, buildValue: sumBuildValue }
+          `Build ${sumBuildValue} (${biggerCard.rank} + ${smallerCard.rank})`,
+          {
+            draggedCard,
+            targetCard: looseCard,
+            buildValue: sumBuildValue,
+            biggerCard,
+            smallerCard
+          }
         ));
       }
     }
@@ -167,7 +210,8 @@ export const useGameActions = () => {
       const { currentPlayer, playerHands, tableCards } = currentGameState;
       const draggedCard = draggedItem.card;
 
-      console.log(`Drop attempt - Dragged Player: ${draggedItem.player}, Current Player: ${currentPlayer}, Card: ${draggedCard.rank}, Target: ${targetInfo.type} ${targetInfo.cardId || `${targetInfo.rank}-${targetInfo.suit}`}`);
+      // Debug logging for troubleshooting
+      // console.log(`Drop attempt - Dragged Player: ${draggedItem.player}, Current Player: ${currentPlayer}, Card: ${draggedCard.rank}`);
 
       if (draggedItem.player !== currentPlayer) {
         console.error(`Drop turn validation failed - dragged player: ${draggedItem.player}, current player: ${currentPlayer}`);
@@ -190,8 +234,6 @@ export const useGameActions = () => {
         }
 
         if (!targetCard) {
-          console.warn(`Target card not found on table. Looking for: ${targetInfo.cardId || `${targetInfo.rank}-${targetInfo.suit}`}`);
-          console.log('Current table cards:', tableCards.map(c => c.type ? `Build(${c.value})` : `${c.rank}${c.suit}`));
           showError("Target card not found on table. The card may have already been captured.");
           return currentGameState;
         }
@@ -220,8 +262,6 @@ export const useGameActions = () => {
       const handleBuildDrop = () => {
         const buildToDropOn = tableCards.find(b => b.type === 'build' && b.buildId === targetInfo.buildId);
         if (!buildToDropOn) {
-          console.warn(`Build not found on table. Looking for buildId: ${targetInfo.buildId}`);
-          console.log('Current builds:', tableCards.filter(c => c.type === 'build').map(b => b.buildId));
           showError("Target build not found on table. The build may have already been captured.");
           return currentGameState;
         }
@@ -254,7 +294,14 @@ export const useGameActions = () => {
       case 'enhanced_capture':
         return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.payload.opponentCard);
       case 'build':
-        return handleBuild(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.buildValue);
+        return handleBuild(
+          currentGameState,
+          action.payload.draggedCard,
+          [action.payload.targetCard],
+          action.payload.buildValue,
+          action.payload.biggerCard,
+          action.payload.smallerCard
+        );
       case 'baseBuild':
         return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
       default:

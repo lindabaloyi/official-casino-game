@@ -6,7 +6,7 @@ const ItemTypes = {
   CARD: 'card',
 };
 
-const CardStack = ({ cards, onDropStack, stackId }) => {
+const CardStack = ({ cards, onDropStack, stackId, buildValue, isBuild = false }) => {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: ItemTypes.CARD,
     drop: (item) => {
@@ -32,14 +32,30 @@ const CardStack = ({ cards, onDropStack, stackId }) => {
 
   const isActive = isOver && canDrop;
 
+  // For builds, only show the top card to maintain game strategy
+  const cardsToShow = isBuild ? [cards[cards.length - 1]] : cards;
+
+  // Debug logging for build display
+  if (isBuild) {
+    console.log(`CardStack Build Display: fullCards=[${cards.map(c => c.rank).join(',')}], showing=${cardsToShow[0]?.rank}`);
+  }
+
   return (
     // The `ref={drop}` makes this whole div a drop target.
-    <div ref={drop} className={`card-stack ${isActive ? 'active-drop' : ''}`}>
-      {cards.map((card, index) => {
-        const reversedIndex = cards.length - 1 - index;
+    <div ref={drop} className={`card-stack ${isActive ? 'active-drop' : ''} ${isBuild ? 'build-stack' : ''}`}>
+      {cardsToShow.map((card, index) => {
+        const reversedIndex = cardsToShow.length - 1 - index;
+        const isTopCard = index === cardsToShow.length - 1;
+
         return (
           <div key={index} className="card-in-stack" style={{ top: `${reversedIndex * 25}px`, zIndex: reversedIndex }}>
             <Card rank={card.rank} suit={card.suit} />
+            {/* Show build value icon on the top card of builds */}
+            {isBuild && isTopCard && buildValue && (
+              <div className="build-value-icon">
+                {buildValue}
+              </div>
+            )}
           </div>
         );
       })}
