@@ -1,9 +1,9 @@
 import React, { useCallback } from 'react';
 import PlayerHand from './PlayerHand';
 import TableCards from './TableCards';
-import { useDrop } from 'react-dnd';
+import { useDrop, useDrag } from 'react-dnd';
 import './styles/GameBoard.css';
-import CapturedCards from './CapturedCards';
+import CardStack from './CardStack';
 import { useGameActions } from './useGameActions';
 import ActionModal from './ActionModal';
 import { useNotifications } from './styles/NotificationSystem';
@@ -22,23 +22,46 @@ const StatusSection = React.memo(({ round }) => (
   </section>
 ));
 
-const CapturedCardsSection = React.memo(({ playerCaptures }) => (
+const CapturedCardsSection = React.memo(({ playerCaptures, currentPlayer }) => (
   <section
     className="captured-cards-positioned"
     aria-label="Captured Cards"
   >
-    {playerCaptures.map((capturedCards, index) => (
-      <div key={index} className="captured-cards">
-        <h3>Player {index + 1} Captures</h3>
-        <CapturedCards player={index} cards={capturedCards} />
-      </div>
-    ))}
+    {playerCaptures.map((capturedGroups, index) => {
+      const allCapturedCards = (capturedGroups || []).flat();
+      const hasCards = allCapturedCards.length > 0;
+      const isOpponent = index !== currentPlayer;
+      const topCard = hasCards ? allCapturedCards[allCapturedCards.length - 1] : null;
+
+      const [{ isDragging }, drag] = useDrag(() => ({
+        type: ItemTypes.CARD,
+        item: { card: topCard, player: currentPlayer, source: 'opponentCapture' },
+        canDrag: () => hasCards && isOpponent,
+        collect: (monitor) => ({
+          isDragging: !!monitor.isDragging(),
+        }),
+      }), [topCard, currentPlayer, hasCards, isOpponent]);
+
+      return (
+        <div key={index} className="captured-cards" ref={drag} style={{ opacity: isDragging ? 0.5 : 1, cursor: (hasCards && isOpponent) ? 'grab' : 'default' }}>
+          <h3>Player {index + 1} Captures</h3>
+          {hasCards ? (
+            <CardStack
+              cards={allCapturedCards}
+              isBuild={true} // This ensures only the top card is visible
+            />
+          ) : (
+            <div className="cards-container empty"><p>No Cards.</p></div>
+          )}
+        </div>
+      );
+    })}
   </section>
 ));
 
-const TableCardsSection = React.memo(({ tableCards, onDropOnCard, isActive }) => (
+const TableCardsSection = React.memo(({ tableCards, onDropOnCard }) => (
   <section
-    className={`table-cards-section ${isActive ? 'active-drop' : ''}`}
+    className="table-cards-section"
     aria-label="Table Cards"
     role="main"
   >
@@ -118,8 +141,6 @@ function GameBoard({ onRestart }) {
     [handleTrailCard, showInfo]
   );
 
-  const isActive = isOver && canDrop;
-
   // Keyboard navigation handler
   const handleKeyDown = useCallback((event) => {
     if (event.key === 'Escape' && modalInfo) {
@@ -135,18 +156,17 @@ function GameBoard({ onRestart }) {
   return (
     <main
       ref={drop}
-      className={`game-board ${isActive ? 'active-drop' : ''}`}
+      className="game-board"
       role="application"
       aria-label="Casino Card Game"
       tabIndex="-1"
     >
       <StatusSection round={gameState.round} />
       <div className="game-area">
-        <CapturedCardsSection playerCaptures={gameState.playerCaptures} />
+        <CapturedCardsSection playerCaptures={gameState.playerCaptures} currentPlayer={gameState.currentPlayer} />
         <TableCardsSection
           tableCards={gameState.tableCards}
           onDropOnCard={handleDropOnCard}
-          isActive={isActive}
         />
       </div>
       <PlayerHandsSection

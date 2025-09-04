@@ -30,8 +30,9 @@ export const handleTrail = (gameState, card) => {
   return nextPlayer(newState);
 };
 
-export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue, biggerCard, smallerCard) => {
-  const { playerHands, tableCards, currentPlayer } = gameState;
+export const handleBuild = (gameState, draggedItem, tableCardsInBuild, buildValue, biggerCard, smallerCard) => {
+  const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
+  const { card: playerCard, source } = draggedItem;
   const playerHand = playerHands[currentPlayer];
 
   // Validate the build
@@ -39,6 +40,18 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
   if (!validation.valid) {
     console.warn(validation.message);
     return gameState;
+  }
+
+  let newPlayerHands = playerHands;
+  let newTableCards = tableCards;
+  let newPlayerCaptures = playerCaptures;
+
+  // Remove the played card from its source
+  if (source === 'table') {
+    newTableCards = removeCardsFromTable(tableCards, [playerCard]);
+  } else { // Default to hand for builds
+    newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
+    if (!newPlayerHands) return gameState;
   }
 
   let allCardsInBuild;
@@ -63,17 +76,13 @@ export const handleBuild = (gameState, playerCard, tableCardsInBuild, buildValue
   };
 
   // Update game state
-  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
-  if (!newPlayerHands) {
-    return gameState;
-  }
-
-  const newTableCards = removeCardsFromTable(tableCards, tableCardsInBuild);
-  newTableCards.push(newBuild);
+  const finalTableCards = removeCardsFromTable(newTableCards, tableCardsInBuild);
+  finalTableCards.push(newBuild);
 
   const newState = updateGameState(gameState, {
     playerHands: newPlayerHands,
-    tableCards: newTableCards,
+    tableCards: finalTableCards,
+    playerCaptures: newPlayerCaptures,
   });
 
   logGameState(`Player ${currentPlayer + 1} built a ${buildValue}`, nextPlayer(newState));
@@ -123,18 +132,26 @@ export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo)
   return nextPlayer(newState);
 };
 
-export const handleBaseBuild = (gameState, playerCard, baseCard, otherCardsInBuild) => {
-  const { playerHands, tableCards, currentPlayer } = gameState;
+export const handleBaseBuild = (gameState, draggedItem, baseCard, otherCardsInBuild) => {
+  const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
+  const { card: playerCard, source } = draggedItem;
 
-  // Remove playerCard from hand
-  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
-  if (!newPlayerHands) {
-    return gameState;
+  let newPlayerHands = playerHands;
+  let newTableCards = tableCards;
+  let newPlayerCaptures = playerCaptures;
+
+  // A base build should only be initiated from the hand, but we handle sources just in case.
+  if (source === 'table') {
+    newTableCards = removeCardsFromTable(tableCards, [playerCard]);
+  } else { // Default to hand
+    newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
+    if (!newPlayerHands) return gameState;
   }
+
 
   // Remove baseCard and otherCardsInBuild from table
   const cardsToRemoveFromTable = [baseCard, ...otherCardsInBuild];
-  const newTableCards = removeCardsFromTable(tableCards, cardsToRemoveFromTable);
+  const finalTableCards = removeCardsFromTable(newTableCards, cardsToRemoveFromTable);
 
   // Construct the new build's cards array with proper combination grouping
   // otherCardsInBuild is an array of combinations, each combination is an array of cards
@@ -159,21 +176,22 @@ export const handleBaseBuild = (gameState, playerCard, baseCard, otherCardsInBui
     isExtendable: false,
   };
 
-  newTableCards.push(newBuild);
+  finalTableCards.push(newBuild);
 
   const newState = updateGameState(gameState, {
     playerHands: newPlayerHands,
-    tableCards: newTableCards,
+    tableCards: finalTableCards,
+    playerCaptures: newPlayerCaptures,
   });
 
   logGameState(`Player ${currentPlayer + 1} created a base build with a ${playerCard.rank}`, nextPlayer(newState));
   return nextPlayer(newState);
 };
 
-export const handleAddToOpponentBuild = (gameState, playerCard, buildToAddTo) => {
-  const { playerHands, tableCards, currentPlayer } = gameState;
-
-  // Validation is handled before this function is called.
+export const handleAddToOpponentBuild = (gameState, draggedItem, buildToAddTo) => {
+  const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
+  const { card: playerCard, source } = draggedItem;
+  // Validation is handled in useGameActions.
 
   const newBuildValue = buildToAddTo.value + rankValue(playerCard.rank);
 
@@ -190,36 +208,50 @@ export const handleAddToOpponentBuild = (gameState, playerCard, buildToAddTo) =>
     isExtendable: false, // Extended builds cannot be extended further
   };
 
-  // Update game state
-  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
-  if (!newPlayerHands) {
-    return gameState;
+  let newPlayerHands = playerHands;
+  let newTableCards = tableCards;
+  let newPlayerCaptures = playerCaptures;
+
+  // This action should only come from the hand, but we handle sources for robustness.
+  if (source === 'table') {
+    newTableCards = removeCardsFromTable(tableCards, [playerCard]);
+  } else { // Default to hand
+    newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
+    if (!newPlayerHands) return gameState;
   }
 
   // Remove old build from table and add the new one
-  const newTableCards = removeCardsFromTable(tableCards, [buildToAddTo]);
-  newTableCards.push(newBuild);
+  const finalTableCards = removeCardsFromTable(newTableCards, [buildToAddTo]);
+  finalTableCards.push(newBuild);
 
   const newState = updateGameState(gameState, {
     playerHands: newPlayerHands,
-    tableCards: newTableCards,
+    tableCards: finalTableCards,
+    playerCaptures: newPlayerCaptures,
   });
 
   logGameState(`Player ${currentPlayer + 1} extended opponent's build to ${newBuild.value}`, nextPlayer(newState));
   return nextPlayer(newState);
 };
 
-export const handleCapture = (gameState, selectedCard, selectedTableCards, opponentCard = null) => {
+export const handleCapture = (gameState, draggedItem, selectedTableCards, opponentCard = null) => {
   const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
+  const { card: selectedCard, source } = draggedItem;
 
-  // Remove capturing card from hand
-  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, selectedCard);
-  if (!newPlayerHands) {
-    return gameState;
+  let newPlayerHands = playerHands;
+  let newTableCards = tableCards;
+  let newPlayerCaptures = playerCaptures;
+
+  // Update game state
+  if (source === 'table') {
+    newTableCards = removeCardsFromTable(tableCards, [selectedCard]);
+  } else { // Default to hand
+    newPlayerHands = removeCardFromHand(playerHands, currentPlayer, selectedCard);
+    if (!newPlayerHands) return gameState;
   }
 
   // Remove captured cards from table
-  const newTableCards = tableCards.filter(item => {
+  const finalTableCards = newTableCards.filter(item => {
     if (item.type === 'build') {
       return !selectedTableCards.some(capturedItem => capturedItem.buildId === item.buildId);
     } else {
@@ -230,10 +262,10 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards, oppon
   });
 
   // Handle opponent's card removal if involved
-  let newOpponentCaptures = [...playerCaptures];
+  let finalPlayerCaptures = [...newPlayerCaptures];
   if (opponentCard) {
     const opponentIndex = 1 - currentPlayer; // Get opponent's index
-    newOpponentCaptures[opponentIndex] = playerCaptures[opponentIndex].map(group =>
+    finalPlayerCaptures[opponentIndex] = newPlayerCaptures[opponentIndex].map(group =>
       group.filter(card =>
         !(card.rank === opponentCard.rank && card.suit === opponentCard.suit)
       )
@@ -249,13 +281,12 @@ export const handleCapture = (gameState, selectedCard, selectedTableCards, oppon
   const capturedGroup = createCaptureStack(selectedCard, flattenedCapturedCards, opponentCard);
 
   // Add captured cards to player's captures
-  const newPlayerCaptures = [...newOpponentCaptures];
-  newPlayerCaptures[currentPlayer] = [...newPlayerCaptures[currentPlayer], capturedGroup];
+  finalPlayerCaptures[currentPlayer] = [...finalPlayerCaptures[currentPlayer], capturedGroup];
 
   const newState = updateGameState(gameState, {
     playerHands: newPlayerHands,
-    tableCards: newTableCards,
-    playerCaptures: newPlayerCaptures,
+    tableCards: finalTableCards,
+    playerCaptures: finalPlayerCaptures,
   });
 
   const captureDescription = opponentCard

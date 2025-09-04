@@ -65,24 +65,26 @@ export const useGameActions = () => {
     setGameState(currentGameState => {
       if (!action || !action.payload) return currentGameState;
 
+      const { draggedItem } = action.payload;
+
       switch (action.type) {
         case 'capture':
-          return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard]);
+          return handleCapture(currentGameState, draggedItem, [action.payload.targetCard]);
         case 'enhanced_capture':
-          return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.payload.opponentCard);
+          return handleCapture(currentGameState, draggedItem, [action.payload.targetCard], action.payload.opponentCard);
         case 'build':
           return handleBuild(
             currentGameState,
-            action.payload.draggedCard,
+            draggedItem,
             [action.payload.targetCard],
             action.payload.buildValue,
             action.payload.biggerCard,
             action.payload.smallerCard
           );
         case 'baseBuild':
-          return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
+          return handleBaseBuild(currentGameState, draggedItem, action.payload.baseCard, action.payload.otherCardsInBuild);
         case 'addToOpponentBuild':
-          return handleAddToOpponentBuild(currentGameState, action.payload.draggedCard, action.payload.buildToAddTo);
+          return handleAddToOpponentBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
         default:
           return currentGameState;
       }
@@ -92,8 +94,9 @@ export const useGameActions = () => {
 
 
   // Helper function to generate possible actions for loose card drops
-  const generatePossibleActions = (draggedCard, looseCard, playerHand, tableCards, playerCaptures, currentPlayer) => {
+  const generatePossibleActions = (draggedItem, looseCard, playerHand, tableCards, playerCaptures, currentPlayer) => {
     const actions = [];
+    const { card: draggedCard } = draggedItem;
     const remainingHand = playerHand.filter(c =>
       c.rank !== draggedCard.rank || c.suit !== draggedCard.suit
     );
@@ -114,14 +117,14 @@ export const useGameActions = () => {
         actions.push(createActionOption(
           'capture',
           `Capture ${looseCard.rank}`,
-          { draggedCard, targetCard: looseCard }
+          { draggedItem, targetCard: looseCard }
         ));
       } else {
         // Player has multiple identical cards - offer choice between capture and build
         actions.push(createActionOption(
           'capture',
           `Capture ${looseCard.rank}`,
-          { draggedCard, targetCard: looseCard }
+          { draggedItem, targetCard: looseCard }
         ));
 
         // Also offer build option
@@ -129,7 +132,7 @@ export const useGameActions = () => {
           actions.push(createActionOption(
             'build',
             `Build ${rankValue(draggedCard.rank)}`,
-            { draggedCard, targetCard: looseCard, buildValue: rankValue(draggedCard.rank) }
+            { draggedItem, targetCard: looseCard, buildValue: rankValue(draggedCard.rank) }
           ));
         }
 
@@ -145,7 +148,7 @@ export const useGameActions = () => {
               actions.push(createActionOption(
                 'build',
                 `Build ${sumBuildValue} (${draggedCard.rank} + ${looseCard.rank})`,
-                { draggedCard, targetCard: looseCard, buildValue: sumBuildValue }
+                { draggedItem, targetCard: looseCard, buildValue: sumBuildValue }
               ));
             }
           }
@@ -158,7 +161,7 @@ export const useGameActions = () => {
         actions.push(createActionOption(
           'enhanced_capture',
           `Capture ${looseCard.rank} using opponent's ${opponentCard.rank}`,
-          { draggedCard, targetCard: looseCard, opponentCard }
+          { draggedItem, targetCard: looseCard, opponentCard }
         ));
       });
     }
@@ -170,7 +173,7 @@ export const useGameActions = () => {
         actions.push(createActionOption(
           'baseBuild',
           `Build ${rankValue(draggedCard.rank)} on ${looseCard.rank} with ${combination.map(c => c.rank).join('+')}`,
-          { draggedCard, baseCard: looseCard, otherCardsInBuild: combination }
+          { draggedItem, baseCard: looseCard, otherCardsInBuild: combination }
         ));
       });
     }
@@ -192,7 +195,7 @@ export const useGameActions = () => {
           'build',
           `Build ${sumBuildValue} (${biggerCard.rank} + ${smallerCard.rank})`,
           {
-            draggedCard,
+            draggedItem,
             targetCard: looseCard,
             buildValue: sumBuildValue,
             biggerCard,
@@ -214,7 +217,6 @@ export const useGameActions = () => {
     // Get fresh game state for turn validation
     setGameState(currentGameState => {
       const { currentPlayer, playerHands, tableCards } = currentGameState;
-      const draggedCard = draggedItem.card;
 
       // Debug logging for troubleshooting
       // console.log(`Drop attempt - Dragged Player: ${draggedItem.player}, Current Player: ${currentPlayer}, Card: ${draggedCard.rank}`);
@@ -244,7 +246,7 @@ export const useGameActions = () => {
           return currentGameState;
         }
 
-        const possibleActions = generatePossibleActions(draggedCard, targetCard, playerHand, tableCards, currentGameState.playerCaptures, currentPlayer);
+        const possibleActions = generatePossibleActions(draggedItem, targetCard, playerHand, tableCards, currentGameState.playerCaptures, currentPlayer);
 
         if (possibleActions.length === 0) {
           showError("No valid moves with this card combination.");
@@ -257,7 +259,7 @@ export const useGameActions = () => {
           // Show modal for user to choose
           setModalInfo({
             title: 'Choose Your Action',
-            message: `What would you like to do with the ${draggedCard.rank} and ${targetCard.rank}?`,
+            message: `What would you like to do with the ${draggedItem.card.rank} and ${targetCard.rank}?`,
             actions: possibleActions,
           });
           return currentGameState;
@@ -273,18 +275,18 @@ export const useGameActions = () => {
         }
 
         const playerHand = playerHands[currentPlayer];
+        const { card: draggedCard } = draggedItem;
 
         // Case 1: Direct Capture
         if (rankValue(draggedCard.rank) === buildToDropOn.value) {
-          return handleCapture(currentGameState, draggedCard, [buildToDropOn]);
+          return handleCapture(currentGameState, draggedItem, [buildToDropOn]);
         }
 
         // Case 2: Interacting with an opponent's build
         if (buildToDropOn.owner !== currentPlayer) {
           const validation = validateAddToOpponentBuild(buildToDropOn, draggedCard, playerHand, tableCards, currentPlayer);
           if (validation.valid) {
-            // For now, auto-execute. Could be a modal option.
-            return handleAddToOpponentBuild(currentGameState, draggedCard, buildToDropOn);
+            return handleAddToOpponentBuild(currentGameState, draggedItem, buildToDropOn);
           } else {
             showError(validation.message);
             return currentGameState;
@@ -314,24 +316,25 @@ export const useGameActions = () => {
 
   // Helper function to execute actions within setGameState
   const executeAction = (currentGameState, action) => {
+    const { draggedItem } = action.payload;
     switch (action.type) {
       case 'capture':
-        return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard]);
+        return handleCapture(currentGameState, draggedItem, [action.payload.targetCard]);
       case 'enhanced_capture':
-        return handleCapture(currentGameState, action.payload.draggedCard, [action.payload.targetCard], action.payload.opponentCard);
+        return handleCapture(currentGameState, draggedItem, [action.payload.targetCard], action.payload.opponentCard);
       case 'build':
         return handleBuild(
           currentGameState,
-          action.payload.draggedCard,
+          draggedItem,
           [action.payload.targetCard],
           action.payload.buildValue,
           action.payload.biggerCard,
           action.payload.smallerCard
         );
       case 'baseBuild':
-        return handleBaseBuild(currentGameState, action.payload.draggedCard, action.payload.baseCard, action.payload.otherCardsInBuild);
+        return handleBaseBuild(currentGameState, draggedItem, action.payload.baseCard, action.payload.otherCardsInBuild);
       case 'addToOpponentBuild':
-        return handleAddToOpponentBuild(currentGameState, action.payload.draggedCard, action.payload.buildToAddTo);
+        return handleAddToOpponentBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
       default:
         return currentGameState;
     }

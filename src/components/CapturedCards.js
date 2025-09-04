@@ -5,11 +5,8 @@ import './CapturedCards.css';
 const CapturedCards = React.memo(({ player, cards: capturedGroups }) => {
   if (!capturedGroups || capturedGroups.length === 0) {
     return (
-      <div className="captured-cards">
-        <h4>Player {player + 1} Captures</h4>
-        <div className="cards-container empty">
-          <p>No cards captured yet KRM.</p>
-        </div>
+      <div className="cards-container empty">
+        <p>No Cards.</p>
       </div>
     );
   }
@@ -18,16 +15,13 @@ const CapturedCards = React.memo(({ player, cards: capturedGroups }) => {
   const allCapturedCards = capturedGroups.flat();
 
   return (
-    <div className="captured-cards">
-      <h4>Player {player + 1} Captures</h4>
-      <div className="cards-container">
-        {/* Render a single stack for the entire capture pile, styled like a build */}
-        <CardStack
-          key={`capture-pile-${player}`}
-          cards={allCapturedCards}
-          isBuild={true} // This ensures only the top card is visible
-        />
-      </div>
+    <div className="cards-container">
+      {/* Render a single stack for the entire capture pile, styled like a build */}
+      <CardStack
+        key={`capture-pile-${player}`}
+        cards={allCapturedCards}
+        isBuild={true} // This ensures only the top card is visible
+      />
     </div>
   );
 });
