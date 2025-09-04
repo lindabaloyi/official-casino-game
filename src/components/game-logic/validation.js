@@ -116,7 +116,7 @@ export const validateTrail = (tableCards, card, currentPlayer, round) => {
   if (tableCards.some(c => !c.type && c.rank === card.rank)) {
     return {
       valid: false,
-      message: `You cannot trail a ${card.rank} because one is already on the table.`
+      message: `You cannot trail a ${card.rank} because one is on the table. Try dragging to capture.`
     };
   }
 

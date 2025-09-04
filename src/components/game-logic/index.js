@@ -51,5 +51,9 @@ export {
   handleBaseBuild,
   handleAddToBuild,
   handleTemporalBuild,
-  handleAddToOpponentBuild
+  handleAddToOpponentBuild,
+  startNextRound,
+  handleSweep,
+  calculateScores,
+  endGame
 } from './game-actions.js';

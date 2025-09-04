@@ -59,13 +59,13 @@ const CapturedCardsSection = React.memo(({ playerCaptures, currentPlayer }) => (
   </section>
 ));
 
-const TableCardsSection = React.memo(({ tableCards, onDropOnCard }) => (
+const TableCardsSection = React.memo(({ tableCards, onDropOnCard, currentPlayer }) => (
   <section
     className="table-cards-section"
     aria-label="Table Cards"
     role="main"
   >
-    <TableCards cards={tableCards} onDropOnCard={onDropOnCard} />
+    <TableCards cards={tableCards} onDropOnCard={onDropOnCard} currentPlayer={currentPlayer} />
   </section>
 ));
 
@@ -167,6 +167,7 @@ function GameBoard({ onRestart }) {
         <TableCardsSection
           tableCards={gameState.tableCards}
           onDropOnCard={handleDropOnCard}
+          currentPlayer={gameState.currentPlayer}
         />
       </div>
       <PlayerHandsSection

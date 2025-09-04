@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   initializeGame,
 } from './game-logic/game-state.js';
@@ -9,9 +9,13 @@ import {
   handleBaseBuild,
   handleTemporalBuild,
   handleAddToOpponentBuild,
+  startNextRound,
+  handleSweep,
+  calculateScores,
+  endGame,
 } from './game-logic/index.js';
 import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand } from './game-logic/index.js';
-import { validateAddToOpponentBuild } from './game-logic/validation.js';
+import { validateAddToOpponentBuild, validateTrail } from './game-logic/validation.js';
 
 // Import notification system
 import { useNotifications } from './styles/NotificationSystem';
@@ -21,6 +25,48 @@ export const useGameActions = () => {
   const [modalInfo, setModalInfo] = useState(null);
   const { showError, showWarning, showInfo } = useNotifications();
 
+  // Effect to handle end of round and end of game
+  useEffect(() => {
+    const { playerHands, round, deck, gameOver } = gameState;
+
+    // Don't run if game is already over
+    if (gameOver) return;
+
+    // Condition for end of a round: both hands are empty
+    if (
+      playerHands[0].length === 0 &&
+      playerHands[1].length === 0
+    ) {
+      // Use a timeout to allow players to see the final board state
+      const timer = setTimeout(() => {
+        setGameState(currentState => {
+          // Re-check to prevent race conditions
+          if (currentState.gameOver || (currentState.playerHands[0].length !== 0 || currentState.playerHands[1].length !== 0)) {
+            return currentState;
+          }
+
+          let sweptState = { ...currentState };
+          // Step 1: Sweep remaining cards if any
+          if (sweptState.tableCards.length > 0 && sweptState.lastCapturer !== null) {
+            showInfo(`Player ${sweptState.lastCapturer + 1} sweeps the table.`);
+            sweptState = handleSweep(sweptState);
+          }
+
+          // Step 2: Check game flow
+          if (sweptState.round === 1 && sweptState.deck.length > 0) {
+            showInfo("Round 1 over. Dealing for Round 2.");
+            return startNextRound(sweptState);
+          } else {
+            showInfo("Game over! Tallying points...");
+            return endGame(sweptState);
+          }
+        });
+      }, 2000); // 2-second delay
+
+      return () => clearTimeout(timer); // Cleanup timer on unmount or re-render
+    }
+  }, [gameState, showInfo]);
+
   const handleTrailCard = useCallback((card, player) => {
     setGameState(currentGameState => {
       if (player !== currentGameState.currentPlayer) {
@@ -28,21 +74,17 @@ export const useGameActions = () => {
         return currentGameState;
       }
 
-      // Check if this should be a capture instead of a trail
-      const matchingTableCard = currentGameState.tableCards.find(c => !c.type && c.rank === card.rank);
-      if (matchingTableCard) {
-        showError(`You cannot trail a ${card.rank} because one is already on the table. Try dragging onto the specific card to capture it.`);
+      const { tableCards, round } = currentGameState;
+      const validation = validateTrail(tableCards, card, player, round);
+
+      if (!validation.valid) {
+        showError(validation.message);
         return currentGameState;
       }
 
-      const newState = handleTrail(currentGameState, card);
-
-      // If the state didn't change, it means the trail was invalid
-      if (newState === currentGameState) {
-        showError("Cannot trail this card. Check game rules.");
-      }
-
-      return newState;
+      // If validation passes, execute the trail action.
+      // The handleTrail function now assumes the move is valid.
+      return handleTrail(currentGameState, card);
     });
   }, [showError, handleTrail]);
 

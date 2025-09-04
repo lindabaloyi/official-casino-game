@@ -9,24 +9,28 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
 
   const addNotification = useCallback((notification) => {
-    const id = Date.now() + Math.random();
-    const newNotification = {
-      id,
-      type: 'info',
-      duration: 4000,
-      ...notification
-    };
+    setNotifications(prev => {
+      // Prevent duplicate notifications with the exact same message
+      if (prev.some(n => n.message === notification.message)) {
+        return prev;
+      }
 
-    setNotifications(prev => [...prev, newNotification]);
+      const id = Date.now() + Math.random();
+      const newNotification = {
+        id,
+        type: 'info',
+        duration: 4000,
+        ...notification
+      };
 
-    // Auto-remove notification after duration
-    if (newNotification.duration > 0) {
-      setTimeout(() => {
-        removeNotification(id);
-      }, newNotification.duration);
-    }
-
-    return id;
+      // Auto-remove notification after duration
+      if (newNotification.duration > 0) {
+        setTimeout(() => {
+          removeNotification(id);
+        }, newNotification.duration);
+      }
+      return [...prev, newNotification];
+    });
   }, []);
 
   const removeNotification = useCallback((id) => {

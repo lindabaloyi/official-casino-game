@@ -63,6 +63,7 @@
 
 /* Captured Cards Section */
 .captured-cards-positioned {
+  position: absolute;
   flex-shrink: 0; /* Prevent from shrinking */
   width: 140px; /* Give it a fixed width */
   display: flex;
@@ -222,20 +223,6 @@
 /* Build Styling */
 .build {
   position: relative;
-}
-
-.build::before {
-  content: "BUILD";
-  position: absolute;
-  top: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--accent);
-  color: white;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 0.7rem;
-  font-weight: bold;
 }
 
 /* Build Value Icon */

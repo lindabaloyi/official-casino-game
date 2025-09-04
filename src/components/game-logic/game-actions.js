@@ -1,18 +1,10 @@
 import { updateGameState, nextPlayer } from './game-state.js';
 import { rankValue, removeCardFromHand, removeCardsFromTable, sortCardsByRank, calculateCardSum, generateBuildId, findOpponentMatchingCards, createCaptureStack } from './card-operations.js';
-import { validateTrail, validateBuild, validateAddToBuild } from './validation.js';
+import { validateBuild, validateAddToBuild } from './validation.js';
 import { logGameState } from './game-state.js';
 
 export const handleTrail = (gameState, card) => {
-  const { playerHands, tableCards, currentPlayer, round } = gameState;
-
-  // Validate the trail action
-  const validation = validateTrail(tableCards, card, currentPlayer, round);
-  if (!validation.valid) {
-    // Instead of alert, we'll return the state and let the UI handle the error
-    console.warn(validation.message);
-    return gameState;
-  }
+  const { playerHands, tableCards, currentPlayer } = gameState;
 
   // Remove card from hand
   const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, card);
@@ -287,6 +279,7 @@ export const handleCapture = (gameState, draggedItem, selectedTableCards, oppone
     playerHands: newPlayerHands,
     tableCards: finalTableCards,
     playerCaptures: finalPlayerCaptures,
+    lastCapturer: currentPlayer,
   });
 
   const captureDescription = opponentCard
@@ -326,4 +319,101 @@ export const handleTemporalBuild = (gameState, opponentCard, tableCard) => {
 
   logGameState(`Player ${currentPlayer + 1} created temporal build with opponent's ${opponentCard.rank}`, newState);
   return newState;
+};
+
+/**
+ * Transitions the game to the next round, dealing new cards.
+ * @param {object} gameState - The current game state.
+ * @returns {object} The updated game state for the new round.
+ */
+export const startNextRound = (gameState) => {
+  let { deck, playerHands } = gameState;
+
+  // Per the rules, 20 cards should be left for round 2.
+  if (deck.length < 20) {
+    console.error("Not enough cards in the deck to start round 2.", deck.length);
+    // This might indicate an end-of-game condition if the deck is empty.
+    return gameState;
+  }
+
+  const newPlayerHands = [[...playerHands[0]], [...playerHands[1]]];
+
+  // Deal 10 cards to each player for round 2
+  for (let i = 0; i < 10; i++) {
+    if (deck.length > 0) newPlayerHands[0].push(deck.pop());
+    if (deck.length > 0) newPlayerHands[1].push(deck.pop());
+  }
+
+  return updateGameState(gameState, {
+    deck,
+    playerHands: newPlayerHands,
+    round: 2,
+  });
+};
+
+/**
+ * Sweeps the remaining table cards and gives them to the last player who captured.
+ * @param {object} gameState - The current game state.
+ * @returns {object} The updated game state.
+ */
+export const handleSweep = (gameState) => {
+  const { tableCards, playerCaptures, lastCapturer } = gameState;
+
+  if (tableCards.length === 0 || lastCapturer === null) {
+    return gameState; // Nothing to sweep or no one to give it to
+  }
+
+  const flattenedTableCards = tableCards.flatMap(item =>
+    item.type === 'build' ? item.cards : [item]
+  );
+
+  const newPlayerCaptures = [...playerCaptures];
+  // Create a new capture group for the swept cards. The order is immaterial.
+  newPlayerCaptures[lastCapturer] = [...newPlayerCaptures[lastCapturer], flattenedTableCards];
+
+  const newState = updateGameState(gameState, {
+    tableCards: [], // Clear the table
+    playerCaptures: newPlayerCaptures,
+  });
+
+  logGameState(`Player ${lastCapturer + 1} swept the remaining cards`, newState);
+  return newState;
+};
+
+/**
+ * Calculates the final scores for each player based on the rules in GEMINI.md.
+ * @param {Array<Array<Array<Card>>>} playerCaptures - The captured cards for both players.
+ * @returns {Array<number>} The final scores for player 1 and player 2.
+ */
+export const calculateScores = (playerCaptures) => {
+  const scores = [0, 0];
+  playerCaptures.forEach((captures, playerIndex) => {
+    const allCards = captures.flat();
+    let currentScore = 0;
+
+    if (allCards.length >= 21) currentScore += 1;
+
+    const spadeCount = allCards.filter(c => c.suit === '♠').length;
+    if (spadeCount >= 6) currentScore += 2;
+
+    allCards.forEach(card => {
+      if (card.rank === 'A') currentScore += 1;
+      if (card.rank === '10' && card.suit === '♦') currentScore += 2;
+      if (card.rank === '2' && card.suit === '♠') currentScore += 1;
+    });
+    scores[playerIndex] = currentScore;
+  });
+  return scores;
+};
+
+/**
+ * Ends the game, calculates scores, and determines the winner.
+ * @param {object} gameState - The current game state.
+ * @returns {object} The final game state with scores and winner.
+ */
+export const endGame = (gameState) => {
+  const scores = calculateScores(gameState.playerCaptures);
+  const winner = scores[0] > scores[1] ? 0 : (scores[1] > scores[0] ? 1 : null); // Handle ties
+
+  return updateGameState(gameState, { scores, winner, gameOver: true });
 };

@@ -58,6 +58,7 @@ export const initializeGame = () => {
     scores: [0, 0],
     gameOver: false,
     winner: null,
+    lastCapturer: null,
   };
 };
 
