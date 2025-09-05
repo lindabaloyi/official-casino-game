@@ -180,6 +180,45 @@ export const handleBaseBuild = (gameState, draggedItem, baseCard, otherCardsInBu
   return nextPlayer(newState);
 };
 
+export const handleCreateBuildFromStack = (gameState, draggedItem, stack) => {
+  const { currentPlayer, playerHands, tableCards } = gameState;
+  const { card: handCard } = draggedItem;
+
+  // 1. Calculate new build properties
+  const stackValue = calculateCardSum(stack.cards);
+  const handCardValue = rankValue(handCard.rank);
+  const isReinforce = stackValue === handCardValue;
+  const newBuildValue = isReinforce ? stackValue : stackValue + handCardValue;
+
+  const allCardsInBuild = [...stack.cards, handCard].sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+
+  // 2. Create the new build object
+  const newBuild = {
+    buildId: generateBuildId(),
+    type: 'build',
+    cards: allCardsInBuild,
+    value: newBuildValue,
+    owner: currentPlayer,
+    isExtendable: !isReinforce,
+  };
+
+  // 3. Update game state
+  // Remove hand card
+  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, handCard);
+  if (!newPlayerHands) {
+    console.error("Card for build not found in hand.");
+    return gameState;
+  }
+
+  // Remove temporary stack from table and add new build
+  const newTableCards = tableCards.filter(s => s.stackId !== stack.stackId);
+  newTableCards.push(newBuild);
+
+  const newState = updateGameState(gameState, { playerHands: newPlayerHands, tableCards: newTableCards });
+  logGameState(`Player ${currentPlayer + 1} created a build of ${newBuildValue} from a stack`, nextPlayer(newState));
+  return nextPlayer(newState);
+};
+
 export const handleAddToOpponentBuild = (gameState, draggedItem, buildToAddTo) => {
   const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
   const { card: playerCard, source } = draggedItem;
@@ -226,6 +265,48 @@ export const handleAddToOpponentBuild = (gameState, draggedItem, buildToAddTo) =
   return nextPlayer(newState);
 };
 
+export const handleAddToOwnBuild = (gameState, draggedItem, buildToAddTo) => {
+  const { card: playerCard } = draggedItem;
+  const { currentPlayer, playerHands, tableCards } = gameState;
+
+  // Validation is assumed to have happened in useGameActions
+
+  // Determine if this is a "reinforce" (7 on a 7) or "increase" (2 on a 5) action
+  const isReinforce = rankValue(playerCard.rank) === buildToAddTo.value;
+  const newBuildValue = isReinforce
+    ? buildToAddTo.value
+    : buildToAddTo.value + rankValue(playerCard.rank);
+
+  // The new card is always placed on top of the existing build cards.
+  const newBuildCards = [...buildToAddTo.cards, playerCard];
+
+  const newBuild = {
+    ...buildToAddTo, // Retains original buildId, owner
+    value: newBuildValue,
+    cards: newBuildCards,
+    isExtendable: !isReinforce, // A reinforced build (e.g., 7,7) cannot be extended further
+  };
+
+  // Update table: remove old build, add new one
+  const newTableCards = tableCards.filter(b => b.buildId !== buildToAddTo.buildId);
+  newTableCards.push(newBuild);
+
+  // Update player hand
+  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
+  if (!newPlayerHands) {
+      console.error("Card for 'add to own build' not found in hand.");
+      return gameState; // Should not happen if validation is correct
+  }
+
+  const newState = updateGameState(gameState, {
+    tableCards: newTableCards,
+    playerHands: newPlayerHands,
+  });
+
+  logGameState(`Player ${currentPlayer + 1} added to their build, creating a new build of ${newBuildValue}`, nextPlayer(newState));
+  return nextPlayer(newState);
+};
+
 export const handleCapture = (gameState, draggedItem, selectedTableCards, opponentCard = null) => {
   const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
   const { card: selectedCard, source } = draggedItem;
@@ -244,13 +325,19 @@ export const handleCapture = (gameState, draggedItem, selectedTableCards, oppone
 
   // Remove captured cards from table
   const finalTableCards = newTableCards.filter(item => {
-    if (item.type === 'build') {
-      return !selectedTableCards.some(capturedItem => capturedItem.buildId === item.buildId);
-    } else {
-      return !selectedTableCards.some(capturedItem =>
-        capturedItem.rank === item.rank && capturedItem.suit === item.suit
-      );
-    }
+    // Check if the current table item 'item' is one of the selectedTableCards
+    return !selectedTableCards.some(capturedItem => {
+      if (item.type === 'build' && capturedItem.type === 'build') {
+        return item.buildId === capturedItem.buildId;
+      }
+      if (item.type === 'temporary_stack' && capturedItem.type === 'temporary_stack') {
+        return item.stackId === capturedItem.stackId;
+      }
+      if (!item.type && !capturedItem.type) {
+        return item.rank === capturedItem.rank && item.suit === capturedItem.suit;
+      }
+      return false;
+    });
   });
 
   // Handle opponent's card removal if involved
@@ -266,7 +353,7 @@ export const handleCapture = (gameState, draggedItem, selectedTableCards, oppone
 
   // Flatten captured cards from builds and loose cards
   const flattenedCapturedCards = selectedTableCards.flatMap(item =>
-    item.type === 'build' ? item.cards : [item]
+    (item.type === 'build' || item.type === 'temporary_stack') ? item.cards : [item]
   );
 
   // Create properly ordered capture stack

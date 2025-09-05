@@ -17,10 +17,10 @@ export {
 export {
   rankValue,
   getCardId,
+  calculateCardSum,
   removeCardFromHand,
   removeCardsFromTable,
   sortCardsByRank,
-  calculateCardSum,
   generateBuildId,
   isValidBuildType,
   findOpponentMatchingCards,
@@ -31,7 +31,8 @@ export {
 // Optimized algorithms
 export {
   findCombinationsDP,
-  findBaseBuilds
+  findBaseBuilds,
+  canPartitionIntoSums
 } from './algorithms.js';
 
 // Validation logic
@@ -39,7 +40,8 @@ export {
   validateBuild,
   validateTrail,
   validateAddToBuild,
-  validateAddToOpponentBuild
+  validateAddToOpponentBuild,
+  validateTemporaryStackBuild
 } from './validation.js';
 
 
@@ -49,6 +51,8 @@ export {
   handleBuild,
   handleCapture,
   handleBaseBuild,
+  handleAddToOwnBuild,
+  handleCreateBuildFromStack,
   handleAddToBuild,
   handleTemporalBuild,
   handleAddToOpponentBuild,

@@ -188,6 +188,79 @@ export const validateAddToOpponentBuild = (build, playerCard, playerHand, tableC
   return { valid: true, newValue };
 };
 
+export const validateAddToOwnBuild = (build, playerCard, playerHand) => {
+  const cardValue = rankValue(playerCard.rank);
+  const remainingHand = playerHand.filter(c => c.rank !== playerCard.rank || c.suit !== playerCard.suit);
+
+  // Case 1: Reinforcing a build (e.g., adding a 7 to a build of 7)
+  if (cardValue === build.value) {
+    // Player must have another card of the same value to capture later
+    const canCapture = remainingHand.some(c => rankValue(c.rank) === build.value);
+    if (!canCapture) {
+      return { valid: false, message: `You must have another ${build.value} in your hand to reinforce this build.` };
+    }
+    return { valid: true, newValue: build.value }; // The value doesn't change
+  }
+
+  // Case 2: Increasing a build's value (e.g., adding a 2 to a build of 5)
+  const newValue = build.value + cardValue;
+
+  // Rule 2a: New value must be <= 10
+  if (newValue > 10) {
+    return { valid: false, message: `Cannot add to build. New value (${newValue}) would be over 10.` };
+  }
+
+  // Rule 2b: Player must have a backup card to capture the new value
+  const canCaptureNewValue = remainingHand.some(c => rankValue(c.rank) === newValue);
+  if (!canCaptureNewValue) {
+    return { valid: false, message: `You must have a ${newValue} in your hand to make this new build.` };
+  }
+
+  // Rule 2c: Build cannot become too large
+  if (build.cards.length + 1 >= 5) {
+    return { valid: false, message: "This build cannot be extended further." };
+  }
+
+  return { valid: true, newValue };
+};
+
+export const validateTemporaryStackBuild = (stack, handCard, playerHand, tableCards, currentPlayer) => {
+  // Rule 1: Player cannot already have a build
+  const playerAlreadyHasBuild = tableCards.some(
+    item => item.type === 'build' && item.owner === currentPlayer
+  );
+  if (playerAlreadyHasBuild) {
+    return { valid: false, message: "You can only have one build at a time." };
+  }
+
+  const remainingHand = playerHand.filter(c => c.rank !== handCard.rank || c.suit !== handCard.suit);
+  const stackValue = calculateCardSum(stack.cards);
+  const handCardValue = rankValue(handCard.rank);
+
+  // Case 1: Reinforcing a temporary stack to create a permanent build (e.g., dropping a 10 on a stack of 10)
+  if (stackValue === handCardValue) {
+    const buildValue = stackValue;
+    const canCapture = remainingHand.some(c => rankValue(c.rank) === buildValue);
+    if (!canCapture) {
+      return { valid: false, message: `You must have another ${buildValue} in your hand to create this build.` };
+    }
+    return { valid: true, newValue: buildValue };
+  }
+
+  // Case 2: Increasing a temporary stack's value to create a permanent build (e.g., dropping a 2 on a stack of 8)
+  const newBuildValue = stackValue + handCardValue;
+  if (newBuildValue > 10) {
+    return { valid: false, message: `Cannot build. The total value (${newBuildValue}) would be over 10.` };
+  }
+
+  const canCaptureNewValue = remainingHand.some(c => rankValue(c.rank) === newBuildValue);
+  if (!canCaptureNewValue) {
+    return { valid: false, message: `You must have a ${newBuildValue} in your hand to make this build.` };
+  }
+
+  return { valid: true, newValue: newBuildValue };
+};
+
 /**
  * Validates game state integrity.
  * @param {object} gameState - The current game state.

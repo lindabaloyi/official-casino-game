@@ -1,6 +1,6 @@
 import React, { memo, useCallback } from 'react';
 import CardStack from './CardStack';
-import { rankValue } from './game-logic/card-operations.js';
+import { calculateCardSum } from './game-logic/card-operations.js';
 import { useDrag } from 'react-dnd';
 import './TableCards.css';
 
@@ -50,6 +50,7 @@ const TableCards = ({ cards, onDropOnCard, currentPlayer }) => {
   // Separate loose cards from builds to render them differently.
   const looseCards = React.useMemo(() => cards.filter(c => !c.type), [cards]);
   const builds = React.useMemo(() => cards.filter(c => c.type === 'build'), [cards]);
+  const temporaryStacks = React.useMemo(() => cards.filter(c => c.type === 'temporary_stack'), [cards]);
 
   const memoizedOnDropOnCard = useCallback(onDropOnCard, [onDropOnCard]);
 
@@ -66,6 +67,22 @@ const TableCards = ({ cards, onDropOnCard, currentPlayer }) => {
             {builds.map((build) => (
               <BuildStack key={build.buildId} build={build} onDropStack={memoizedOnDropOnCard} />
             ))}
+            {/* Render each temporary stack for capture */}
+            {temporaryStacks.map((stack) => {
+              const memoizedOnDropStack = (draggedItem) => onDropOnCard(draggedItem, { type: 'temporary_stack', stackId: stack.stackId });
+              const stackValue = calculateCardSum(stack.cards);
+              return (
+                <div key={stack.stackId} className="build">
+                  <CardStack
+                    stackId={stack.stackId}
+                    cards={stack.cards}
+                    onDropStack={memoizedOnDropStack}
+                    isBuild={true} // Show as a collapsed stack
+                    buildValue={stackValue} // Display the live sum
+                  />
+                </div>
+              );
+            })}
           </>
         )}
       </div>

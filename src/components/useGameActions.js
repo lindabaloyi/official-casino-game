@@ -13,9 +13,11 @@ import {
   handleSweep,
   calculateScores,
   endGame,
+  handleAddToOwnBuild,
+  handleCreateBuildFromStack,
 } from './game-logic/index.js';
-import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand } from './game-logic/index.js';
-import { validateAddToOpponentBuild, validateTrail } from './game-logic/validation.js';
+import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand, getCardId, calculateCardSum, canPartitionIntoSums } from './game-logic/index.js';
+import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild } from './game-logic/validation.js';
 
 // Import notification system
 import { useNotifications } from './styles/NotificationSystem';
@@ -127,6 +129,10 @@ export const useGameActions = () => {
           return handleBaseBuild(currentGameState, draggedItem, action.payload.baseCard, action.payload.otherCardsInBuild);
         case 'addToOpponentBuild':
           return handleAddToOpponentBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
+        case 'addToOwnBuild':
+          return handleAddToOwnBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
+        case 'createBuildFromStack':
+          return handleCreateBuildFromStack(currentGameState, draggedItem, action.payload.stackToBuildFrom);
         default:
           return currentGameState;
       }
@@ -180,7 +186,7 @@ export const useGameActions = () => {
 
         // Check for same-value sum builds (2+2=4, 3+3=6, 4+4=8, 5+5=10)
         const cardValue = rankValue(draggedCard.rank);
-        if (cardValue >= 2 && cardValue <= 5) {
+        if (cardValue >= 1 && cardValue <= 5) {
           const sumBuildValue = cardValue * 2; // 2+2=4, 3+3=6, 4+4=8, 5+5=10
 
           if (canPlayerCreateBuild) {
@@ -188,8 +194,7 @@ export const useGameActions = () => {
             const canCaptureSumBuild = remainingHand.some(c => rankValue(c.rank) === sumBuildValue);
             if (canCaptureSumBuild) {
               actions.push(createActionOption(
-                'build',
-                `Build ${sumBuildValue} (${draggedCard.rank} + ${looseCard.rank})`,
+                'build', `Build ${sumBuildValue}`,
                 { draggedItem, targetCard: looseCard, buildValue: sumBuildValue }
               ));
             }
@@ -235,7 +240,7 @@ export const useGameActions = () => {
 
         actions.push(createActionOption(
           'build',
-          `Build ${sumBuildValue} (${biggerCard.rank} + ${smallerCard.rank})`,
+          `Build ${sumBuildValue}`,
           {
             draggedItem,
             targetCard: looseCard,
@@ -258,16 +263,133 @@ export const useGameActions = () => {
 
     // Get fresh game state for turn validation
     setGameState(currentGameState => {
-      const { currentPlayer, playerHands, tableCards } = currentGameState;
+      const { currentPlayer, playerHands, tableCards, playerCaptures } = currentGameState;
+      const { card: draggedCard, source: draggedSource } = draggedItem;
 
       // Debug logging for troubleshooting
-      // console.log(`Drop attempt - Dragged Player: ${draggedItem.player}, Current Player: ${currentPlayer}, Card: ${draggedCard.rank}`);
 
       if (draggedItem.player !== currentPlayer) {
         console.error(`Drop turn validation failed - dragged player: ${draggedItem.player}, current player: ${currentPlayer}`);
         showError("It's not your turn!");
         return currentGameState;
       }
+
+      // --- NEW LOGIC FOR TEMPORARY CAPTURE STACKS ---
+
+      // Case A: A card is being used to create/add to a temporary stack
+      // This can be a card from the table OR the opponent's capture pile.
+      if (draggedSource === 'table' || draggedSource === 'opponentCapture') {
+        let newTableCards = tableCards;
+        let newPlayerCaptures = playerCaptures;
+        let cardRemoved = false;
+
+        // Step 1: Remove the dragged card from its source
+        if (draggedSource === 'opponentCapture') {
+          const opponentIndex = 1 - currentPlayer;
+          const opponentCaps = [...playerCaptures[opponentIndex]];
+          if (opponentCaps.length > 0) {
+            const lastGroup = [...opponentCaps[opponentCaps.length - 1]];
+            if (lastGroup.length > 0) {
+              lastGroup.pop(); // Remove the top card
+              if (lastGroup.length > 0) {
+                opponentCaps[opponentCaps.length - 1] = lastGroup;
+              } else {
+                opponentCaps.pop(); // Remove empty group
+              }
+              const updatedCaptures = [...playerCaptures];
+              updatedCaptures[opponentIndex] = opponentCaps;
+              newPlayerCaptures = updatedCaptures;
+              cardRemoved = true;
+            }
+          }
+        } else { // source is 'table'
+          const originalLength = tableCards.length;
+          newTableCards = tableCards.filter(c => getCardId(c) !== getCardId(draggedCard));
+          cardRemoved = newTableCards.length < originalLength;
+        }
+
+        if (!cardRemoved) {
+          showError("Could not find the dragged card's source to move it.");
+          return currentGameState;
+        }
+
+        // Step 2: Add the card to the target on the table
+        // A.1: Dropped on a loose card to create a new stack
+        if (targetInfo.type === 'loose') {
+          const targetCard = tableCards.find(c => !c.type && getCardId(c) === targetInfo.cardId);
+          if (!targetCard) { showError("Target card for stack not found."); return currentGameState; }
+          if (getCardId(draggedCard) === getCardId(targetCard)) return currentGameState; // Prevent self-drop
+
+          const newStack = {
+            stackId: `temp-${Date.now()}`,
+            type: 'temporary_stack',
+            cards: [targetCard, draggedCard], // Base card first
+            owner: currentPlayer,
+          };
+          const finalTableCards = newTableCards.filter(c => getCardId(c) !== getCardId(targetCard));
+          finalTableCards.push(newStack);
+          return { ...currentGameState, tableCards: finalTableCards, playerCaptures: newPlayerCaptures };
+        }
+        // A.2: Dropped on an existing temporary stack to add to it
+        if (targetInfo.type === 'temporary_stack') {
+          const targetStack = tableCards.find(s => s.type === 'temporary_stack' && s.stackId === targetInfo.stackId);
+          if (!targetStack) { showError("Target stack not found."); return currentGameState; }
+          if (targetStack.owner !== currentPlayer) { showError("You cannot add to another player's temporary stack."); return currentGameState; }
+
+          const newStack = { ...targetStack, cards: [...targetStack.cards, draggedCard] };
+          const finalTableCards = newTableCards.filter(c => c.stackId !== targetStack.stackId);
+          finalTableCards.push(newStack);
+          return { ...currentGameState, tableCards: finalTableCards, playerCaptures: newPlayerCaptures };
+        }
+        showError("Invalid move: Cards can only be stacked on loose cards or other temporary stacks.");
+        return currentGameState;
+      }
+
+      // Case B: A hand card is being dragged
+      if (draggedSource === 'hand') {
+        // B.1: Dropped on a temporary stack
+        if (targetInfo.type === 'temporary_stack') {
+          const stack = tableCards.find(s => s.type === 'temporary_stack' && s.stackId === targetInfo.stackId);
+          if (!stack) { showError("Stack not found."); return currentGameState; }
+          if (stack.owner !== currentPlayer) { showError("You can only interact with your own temporary stacks."); return currentGameState; }
+
+          const actions = [];
+          const playerHand = playerHands[currentPlayer];
+
+          // --- Possibility 1: Capture ---
+          const sumOfStack = calculateCardSum(stack.cards);
+          const captureValue = rankValue(draggedCard.rank);
+
+          if (sumOfStack % captureValue === 0) {
+            if (sumOfStack === captureValue || canPartitionIntoSums(stack.cards, captureValue)) {
+              actions.push(createActionOption('capture', `Capture for ${captureValue}`, { draggedItem, targetCard: stack }));
+            }
+          }
+
+          // --- Possibility 2: Create a permanent build ---
+          const buildValidation = validateTemporaryStackBuild(stack, draggedCard, playerHand, tableCards, currentPlayer);
+          if (buildValidation.valid) {
+            actions.push(createActionOption('createBuildFromStack', `Build ${buildValidation.newValue}`, { draggedItem, stackToBuildFrom: stack }));
+          }
+
+          // --- Decision Logic ---
+          if (actions.length === 0) {
+            showError(`Invalid move. Cannot capture or build with this combination.`);
+            // Disband the stack
+            const newTableCards = tableCards.filter(s => s.stackId !== stack.stackId);
+            newTableCards.push(...stack.cards);
+            return { ...currentGameState, tableCards: newTableCards };
+          } else if (actions.length === 1) {
+            return executeAction(currentGameState, actions[0]);
+          } else {
+            setModalInfo({ title: 'Choose Your Action', message: `What would you like to do with this stack?`, actions: actions });
+            return currentGameState;
+          }
+        }
+        // B.2 & B.3 (Hand on loose card or build) fall through to the existing logic below.
+      }
+
+      // --- END NEW LOGIC ---
 
       // Handler for dropping on a loose card
       const handleLooseCardDrop = () => {
@@ -276,7 +398,7 @@ export const useGameActions = () => {
         // Try to find target card using cardId first (more reliable), then fallback to rank/suit
         let targetCard = null;
         if (targetInfo.cardId) {
-          targetCard = tableCards.find(c => !c.type && `${c.rank}-${c.suit}` === targetInfo.cardId);
+          targetCard = tableCards.find(c => !c.type && getCardId(c) === targetInfo.cardId);
         }
         if (!targetCard) {
           // Fallback to rank/suit matching
@@ -288,7 +410,7 @@ export const useGameActions = () => {
           return currentGameState;
         }
 
-        const possibleActions = generatePossibleActions(draggedItem, targetCard, playerHand, tableCards, currentGameState.playerCaptures, currentPlayer);
+        const possibleActions = generatePossibleActions(draggedItem, targetCard, playerHand, tableCards, playerCaptures, currentPlayer);
 
         if (possibleActions.length === 0) {
           showError("No valid moves with this card combination.");
@@ -317,32 +439,58 @@ export const useGameActions = () => {
         }
 
         const playerHand = playerHands[currentPlayer];
-        const { card: draggedCard } = draggedItem;
+        const actions = [];
 
-        // Case 1: Direct Capture
+        // Possibility 1: Capture the build
         if (rankValue(draggedCard.rank) === buildToDropOn.value) {
-          return handleCapture(currentGameState, draggedItem, [buildToDropOn]);
+          actions.push(createActionOption(
+            'capture', `Capture Build (${buildToDropOn.value})`,
+            { draggedItem, targetCard: buildToDropOn }
+          ));
         }
 
-        // Case 2: Interacting with an opponent's build
+        // Possibility 2: Extend an opponent's build
         if (buildToDropOn.owner !== currentPlayer) {
           const validation = validateAddToOpponentBuild(buildToDropOn, draggedCard, playerHand, tableCards, currentPlayer);
           if (validation.valid) {
-            return handleAddToOpponentBuild(currentGameState, draggedItem, buildToDropOn);
-          } else {
-            showError(validation.message);
-            return currentGameState;
+            const newBuildValue = buildToDropOn.value + rankValue(draggedCard.rank);
+            actions.push(createActionOption(
+              'addToOpponentBuild', `Extend to ${newBuildValue}`,
+              { draggedItem, buildToAddTo: buildToDropOn }
+            ));
           }
         }
 
-        // Case 3: Interacting with your own build (placeholder for future)
+        // Possibility 3: Add to your own build
         if (buildToDropOn.owner === currentPlayer) {
-          showError("You cannot add this card to your own build yet.");
-          return currentGameState;
+          const validation = validateAddToOwnBuild(buildToDropOn, draggedCard, playerHand);
+          if (validation.valid) {
+            actions.push(createActionOption(
+              'addToOwnBuild', `Add to Build (${validation.newValue})`,
+              { draggedItem, buildToAddTo: buildToDropOn }
+            ));
+          }
         }
 
-        showError(`Invalid move on build of ${buildToDropOn.value}.`);
-        return currentGameState;
+        // --- Decision Logic ---
+        if (actions.length === 0) {
+          if (buildToDropOn.owner === currentPlayer) {
+            showError("You cannot add this card to your own build.");
+          } else {
+            const validation = validateAddToOpponentBuild(buildToDropOn, draggedCard, playerHand, tableCards, currentPlayer);
+            showError(validation.message || `Invalid move on build of ${buildToDropOn.value}.`);
+          }
+          return currentGameState;
+        } else if (actions.length === 1) {
+          return executeAction(currentGameState, actions[0]);
+        } else {
+          setModalInfo({
+            title: 'Choose Your Action',
+            message: `What would you like to do with your ${draggedCard.rank}?`,
+            actions: actions,
+          });
+          return currentGameState;
+        }
       };
 
       if (targetInfo.type === 'loose') {
@@ -377,6 +525,10 @@ export const useGameActions = () => {
         return handleBaseBuild(currentGameState, draggedItem, action.payload.baseCard, action.payload.otherCardsInBuild);
       case 'addToOpponentBuild':
         return handleAddToOpponentBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
+      case 'addToOwnBuild':
+        return handleAddToOwnBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
+      case 'createBuildFromStack':
+        return handleCreateBuildFromStack(currentGameState, draggedItem, action.payload.stackToBuildFrom);
       default:
         return currentGameState;
     }

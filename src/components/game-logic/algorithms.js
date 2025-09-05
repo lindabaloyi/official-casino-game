@@ -41,6 +41,44 @@ export const findCombinationsDP = (cards, target) => {
   return dp[target];
 };
 
+/**
+ * Checks if a given array of cards can be partitioned into subsets that each sum to a target value.
+ * @param {Array<object>} cards - The array of card objects to partition.
+ * @param {number} targetSum - The target sum for each subset.
+ * @returns {boolean} True if a valid partition exists, false otherwise.
+ */
+export const canPartitionIntoSums = (cards, targetSum) => {
+  if (cards.length === 0) {
+    return true; // Base case: all cards have been successfully partitioned.
+  }
+
+  // Find all possible combinations that sum to the target from the current set of cards.
+  const combinations = findCombinationsDP(cards, targetSum);
+
+  if (combinations.length === 0) {
+    return false; // No combination can be formed from the remaining cards.
+  }
+
+  // Try to recurse with the remaining cards for each found combination.
+  for (const combo of combinations) {
+    const remainingCards = [...cards];
+    // Remove the cards from the current combination.
+    for (const cardInCombo of combo) {
+      const index = remainingCards.findIndex(c => c.rank === cardInCombo.rank && c.suit === cardInCombo.suit);
+      if (index !== -1) {
+        remainingCards.splice(index, 1);
+      }
+    }
+
+    // If a valid partition is found for the rest of the cards, we're done.
+    if (canPartitionIntoSums(remainingCards, targetSum)) {
+      return true;
+    }
+  }
+
+  // If no combination leads to a full partition, then it's not possible.
+  return false;
+};
 
 
 
@@ -62,4 +100,3 @@ export const findBaseBuilds = (playedCard, baseCard, allTableCards) => {
 
   return findCombinationsDP(remainingCards, targetSum - rankValue(baseCard.rank));
 };
-

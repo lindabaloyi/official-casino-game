@@ -10,7 +10,7 @@ const DraggableCard = memo(({ card, player, isCurrent, isSelected, onSelectCard 
   const [{ isDragging }, drag] = useDrag(
     () => ({
       type: ItemTypes.CARD,
-      item: { card, player },
+      item: { card, player, source: 'hand' },
       canDrag: isCurrent,
       collect: (monitor) => ({
         isDragging: monitor.isDragging(),
