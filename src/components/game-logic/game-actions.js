@@ -409,12 +409,12 @@ export const handleTemporalBuild = (gameState, opponentCard, tableCard) => {
 };
 
 /**
- * Transitions the game to the next round, dealing new cards.
+ * Transitions the game to the next round, dealing new cards and carrying over table cards.
  * @param {object} gameState - The current game state.
  * @returns {object} The updated game state for the new round.
  */
 export const startNextRound = (gameState) => {
-  let { deck, playerHands } = gameState;
+  let { deck, playerHands, tableCards } = gameState;
 
   // Per the rules, 20 cards should be left for round 2.
   if (deck.length < 20) {
@@ -425,16 +425,21 @@ export const startNextRound = (gameState) => {
 
   const newPlayerHands = [[...playerHands[0]], [...playerHands[1]]];
 
+  // Create a copy of the deck to avoid mutating the original
+  let workingDeck = [...deck];
+
   // Deal 10 cards to each player for round 2
   for (let i = 0; i < 10; i++) {
-    if (deck.length > 0) newPlayerHands[0].push(deck.pop());
-    if (deck.length > 0) newPlayerHands[1].push(deck.pop());
+    if (workingDeck.length > 0) newPlayerHands[0].push(workingDeck.pop());
+    if (workingDeck.length > 0) newPlayerHands[1].push(workingDeck.pop());
   }
 
   return updateGameState(gameState, {
-    deck,
+    deck: workingDeck,
     playerHands: newPlayerHands,
     round: 2,
+    // Keep the same table cards from round 1
+    tableCards: [...tableCards],
   });
 };
 
@@ -473,24 +478,50 @@ export const handleSweep = (gameState) => {
  * @returns {Array<number>} The final scores for player 1 and player 2.
  */
 export const calculateScores = (playerCaptures) => {
-  const scores = [0, 0];
-  playerCaptures.forEach((captures, playerIndex) => {
-    const allCards = captures.flat();
-    let currentScore = 0;
+  const details = [
+    { mostCards: 0, mostSpades: 0, bigCasino: 0, littleCasino: 0, aces: 0, total: 0, cardCount: 0, spadeCount: 0 },
+    { mostCards: 0, mostSpades: 0, bigCasino: 0, littleCasino: 0, aces: 0, total: 0, cardCount: 0, spadeCount: 0 }
+  ];
 
-    if (allCards.length >= 21) currentScore += 1;
+  const allPlayerCards = playerCaptures.map(captures => captures.flat());
 
-    const spadeCount = allCards.filter(c => c.suit === '♠').length;
-    if (spadeCount >= 6) currentScore += 2;
+  // Tally card counts and spade counts
+  details[0].cardCount = allPlayerCards[0].length;
+  details[1].cardCount = allPlayerCards[1].length;
+  details[0].spadeCount = allPlayerCards[0].filter(c => c.suit === '♠').length;
+  details[1].spadeCount = allPlayerCards[1].filter(c => c.suit === '♠').length;
 
-    allCards.forEach(card => {
-      if (card.rank === 'A') currentScore += 1;
-      if (card.rank === '10' && card.suit === '♦') currentScore += 2;
-      if (card.rank === '2' && card.suit === '♠') currentScore += 1;
+  // Award points for Most Cards (1 pt for 21+ cards)
+  if (details[0].cardCount >= 21) details[0].mostCards = 1;
+  if (details[1].cardCount >= 21) details[1].mostCards = 1;
+
+  // Award points for Most Spades (2 pts for 6+ spades)
+  if (details[0].spadeCount >= 6) details[0].mostSpades = 2;
+  if (details[1].spadeCount >= 6) details[1].mostSpades = 2;
+
+  // Award points for specific cards
+  allPlayerCards.forEach((cards, playerIndex) => {
+    cards.forEach(card => {
+      if (card.rank === 'A') details[playerIndex].aces += 1;
+      if (card.rank === '10' && card.suit === '♦') details[playerIndex].bigCasino = 2;
+      if (card.rank === '2' && card.suit === '♠') details[playerIndex].littleCasino = 1;
     });
-    scores[playerIndex] = currentScore;
   });
-  return scores;
+
+  // Calculate total scores
+  details.forEach((playerDetails) => {
+    playerDetails.total =
+      playerDetails.mostCards +
+      playerDetails.mostSpades +
+      playerDetails.bigCasino +
+      playerDetails.littleCasino +
+      playerDetails.aces;
+  });
+
+  const finalScores = details.map(d => d.total);
+  const winner = finalScores[0] > finalScores[1] ? 0 : (finalScores[1] > finalScores[0] ? 1 : null);
+
+  return { scores: finalScores, details, winner };
 };
 
 /**
@@ -499,8 +530,6 @@ export const calculateScores = (playerCaptures) => {
  * @returns {object} The final game state with scores and winner.
  */
 export const endGame = (gameState) => {
-  const scores = calculateScores(gameState.playerCaptures);
-  const winner = scores[0] > scores[1] ? 0 : (scores[1] > scores[0] ? 1 : null); // Handle ties
-
-  return updateGameState(gameState, { scores, winner, gameOver: true });
+  const { scores, details, winner } = calculateScores(gameState.playerCaptures);
+  return updateGameState(gameState, { scores, winner, scoreDetails: details, gameOver: true });
 };

@@ -258,6 +258,67 @@
   100% { opacity: 1; }
 }
 
+/* Round Transition Animation */
+.round-transition {
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--secondary-bg);
+  padding: 1rem 2rem;
+  border-radius: var(--border-radius);
+  text-align: center;
+  border: 2px solid var(--accent);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.6);
+  z-index: 1500; /* Lower z-index so it doesn't block interactions */
+  pointer-events: none; /* Allow clicks to pass through */
+  animation: roundTransition 4s ease-in-out;
+  opacity: 0.9;
+}
+
+@keyframes roundTransition {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  15% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(0.98);
+  }
+  85% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.round-transition h2 {
+  margin: 0 0 1rem 0;
+  color: var(--accent);
+  font-size: 2.5rem;
+  font-family: var(--font-secondary);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.round-transition p {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
 /* Active Drop Zone */
 .active-drop {
   border-color: var(--success);
@@ -340,14 +401,81 @@
 }
 
 .game-over-section h2 {
-  margin: 0 0 1rem 0;
-  color: var(--text-primary);
-  font-size: 2rem;
+  margin: 0 0 1.5rem 0;
+  color: var(--accent);
+  font-size: 2.5rem;
+  font-family: var(--font-secondary);
 }
 
-.game-over-section p {
-  margin: 0 0 1.5rem 0;
-  font-size: 1.2rem;
+.final-scores-container {
+  display: flex;
+  justify-content: space-around;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.player-score-column {
+  background: rgba(0,0,0,0.2);
+  padding: 1rem;
+  border-radius: var(--border-radius);
+  flex: 1;
+}
+
+.player-score-column h3 {
+  margin: 0 0 1rem 0;
+  font-family: var(--font-secondary);
+  color: var(--text-primary);
+  font-size: 1.5rem;
+}
+
+.points-tally {
+  margin-bottom: 1rem;
+}
+
+.points-label {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.total-score {
+  font-size: 3rem;
+  font-weight: bold;
+  color: var(--accent);
+  margin: 0.25rem 0;
+}
+
+.score-breakdown {
+  list-style-type: none; /* Remove bullets */
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.score-breakdown li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+}
+
+.score-breakdown li:last-child {
+  border-bottom: none;
+}
+
+.score-breakdown span {
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.winner-declaration {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--success);
+  margin: 1.5rem 0;
 }
 
 .game-over-section button {

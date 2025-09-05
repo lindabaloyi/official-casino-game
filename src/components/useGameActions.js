@@ -29,38 +29,37 @@ export const useGameActions = () => {
 
   // Effect to handle end of round and end of game
   useEffect(() => {
-    const { playerHands, round, deck, gameOver } = gameState;
+    const { playerHands, deck, gameOver, round } = gameState;
 
     // Don't run if game is already over
     if (gameOver) return;
 
     // Condition for end of a round: both hands are empty
-    if (
-      playerHands[0].length === 0 &&
-      playerHands[1].length === 0
-    ) {
+    if (playerHands[0].length === 0 && playerHands[1].length === 0) {
       // Use a timeout to allow players to see the final board state
       const timer = setTimeout(() => {
         setGameState(currentState => {
           // Re-check to prevent race conditions
-          if (currentState.gameOver || (currentState.playerHands[0].length !== 0 || currentState.playerHands[1].length !== 0)) {
+          if (currentState.gameOver || (currentState.playerHands[0].length !== 0 || currentState.playerHands[1].length !== 0)
+          ) {
             return currentState;
           }
 
-          let sweptState = { ...currentState };
-          // Step 1: Sweep remaining cards if any
-          if (sweptState.tableCards.length > 0 && sweptState.lastCapturer !== null) {
-            showInfo(`Player ${sweptState.lastCapturer + 1} sweeps the table.`);
-            sweptState = handleSweep(sweptState);
+          // After round 1, start round 2
+          if (currentState.round === 1) {
+            showInfo("Round 1 over. Starting Round 2!");
+            return startNextRound(currentState);
           }
-
-          // Step 2: Check game flow
-          if (sweptState.round === 1 && sweptState.deck.length > 0) {
-            showInfo("Round 1 over. Dealing for Round 2.");
-            return startNextRound(sweptState);
-          } else {
+          // After round 2, end the game
+          else if (currentState.round === 2) {
+            let finalState = { ...currentState };
+            // Sweep remaining cards if any
+            if (finalState.tableCards.length > 0 && finalState.lastCapturer !== null) {
+              showInfo(`Player ${finalState.lastCapturer + 1} sweeps the table.`);
+              finalState = handleSweep(finalState);
+            }
             showInfo("Game over! Tallying points...");
-            return endGame(sweptState);
+            return endGame(finalState);
           }
         });
       }, 2000); // 2-second delay

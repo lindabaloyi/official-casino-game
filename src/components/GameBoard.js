@@ -91,24 +91,56 @@ const PlayerHandsSection = React.memo(({ playerHands, currentPlayer }) => (
   </section>
 ));
 
-const GameOverSection = React.memo(({ winner, onRestart }) => (
-  <div
-    className="game-over-section"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="game-over-title"
-  >
-    <h2 id="game-over-title">Game Over</h2>
-    <p>Winner: Player {winner + 1}</p>
-    <button
-      onClick={onRestart}
-      autoFocus
-      aria-label="Start new game"
-    >
-      Play Again
-    </button>
-  </div>
-));
+const GameOverSection = React.memo(({ winner, scoreDetails, onRestart }) => {
+  if (!scoreDetails) {
+    return (
+      <div className="game-over-section">
+        <h2 id="game-over-title">Game Over</h2>
+        <p>Calculating scores...</p>
+      </div>
+    );
+  }
+
+  const renderPlayerScores = (playerIndex) => {
+    const details = scoreDetails[playerIndex];
+    return (
+      <div className="player-score-column">
+        <h3>Player {playerIndex + 1}</h3>
+        <div className="points-tally">
+          <p className="points-label">Points</p>
+          <p className="total-score">{details.total}</p>
+        </div>
+        <ul className="score-breakdown">
+          <li>Cards ({details.cardCount}): <span>{details.mostCards} pt</span></li>
+          <li>Spades ({details.spadeCount}): <span>{details.mostSpades} pts</span></li>
+          <li>Aces: <span>{details.aces} pts</span></li>
+          {details.bigCasino > 0 && <li>Big Casino (10♦): <span>{details.bigCasino} pts</span></li>}
+          {details.littleCasino > 0 && <li>Little Casino (2♠): <span>{details.littleCasino} pts</span></li>}
+        </ul>
+      </div>
+    );
+  };
+
+  return (
+    <div className="game-over-section" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+      <h2 id="game-over-title">Game Over</h2>
+      <div className="final-scores-container">
+        {renderPlayerScores(0)}
+        {renderPlayerScores(1)}
+      </div>
+      <div className="winner-declaration">
+        {winner !== null ? `Winner: Player ${winner + 1}` : "It's a Tie!"}
+      </div>
+      <button
+        onClick={onRestart}
+        autoFocus
+        aria-label="Start new game"
+      >
+        Play Again
+      </button>
+    </div>
+  );
+});
 
 function GameBoard({ onRestart }) {
   const {
@@ -121,6 +153,20 @@ function GameBoard({ onRestart }) {
   } = useGameActions();
 
   const { showInfo } = useNotifications();
+
+  // State for round transition animation
+  const [showRoundTransition, setShowRoundTransition] = React.useState(false);
+
+  // Effect to show round transition animation when round changes to 2
+  React.useEffect(() => {
+    if (gameState.round === 2 && !showRoundTransition) {
+      setShowRoundTransition(true);
+      const timer = setTimeout(() => {
+        setShowRoundTransition(false);
+      }, 4000); // Show animation for 4 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [gameState.round]); // Remove showRoundTransition from dependencies
 
   const [{ isOver, canDrop }, drop] = useDrop(
     () => ({
@@ -185,8 +231,19 @@ function GameBoard({ onRestart }) {
         </div>
       )}
 
+      {showRoundTransition && (
+        <div className="round-transition">
+          <h2>Round 2</h2>
+          <p>Table cards carried over from Round 1</p>
+        </div>
+      )}
+
       {gameState.gameOver && (
-        <GameOverSection winner={gameState.winner} onRestart={onRestart} />
+        <GameOverSection
+          winner={gameState.winner}
+          scoreDetails={gameState.scoreDetails}
+          onRestart={onRestart}
+        />
       )}
     </main>
   );
