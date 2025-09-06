@@ -69,5 +69,6 @@ export {
   handleMergeIntoOwnBuild,
   handleStageOpponentCard,
   handleExtendToMerge,
-  handleFinalizeStagingStack
+  handleFinalizeStagingStack,
+  handleReinforceOpponentBuildWithStack
 } from './game-actions.js';

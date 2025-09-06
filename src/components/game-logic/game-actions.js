@@ -918,3 +918,35 @@ export const handleFinalizeStagingStack = (gameState, stack) => {
   logGameState(`Player ${currentPlayer + 1} finalized a build of ${newBuild.value}`, nextPlayer(newState));
   return nextPlayer(newState);
 };
+
+/**
+ * Reinforces an opponent's build with a temporary stack of non-hand cards.
+ * This is a staging action that does not end the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} stack - The temporary stack to merge.
+ * @param {object} opponentBuild - The opponent's build to reinforce.
+ * @returns {object} The updated game state.
+ */
+export const handleReinforceOpponentBuildWithStack = (gameState, stack, opponentBuild) => {
+  const { tableCards } = gameState;
+
+  // 1. Get the cards from the stack, stripping the 'source' property.
+  const cardsFromStack = stack.cards.map(({ source, ...card }) => card);
+
+  // 2. Combine the cards. The new cards go on top.
+  const newBuildCards = [...opponentBuild.cards, ...cardsFromStack];
+
+  // 3. Create the new, larger build object. Ownership does NOT change.
+  const newBuild = {
+    ...opponentBuild,
+    cards: newBuildCards,
+    isExtendable: false, // Reinforced builds cannot be extended further
+  };
+
+  // 4. Update the table by removing the old items and adding the new reinforced build.
+  const newTableCards = removeCardsFromTable(tableCards, [opponentBuild, stack]);
+  newTableCards.push(newBuild);
+
+  // 5. Return the new state, but DO NOT end the player's turn.
+  return updateGameState(gameState, { tableCards: newTableCards });
+};

@@ -23,10 +23,11 @@ import {
   handleMergeIntoOwnBuild,
   handleStageOpponentCard,
   handleExtendToMerge,
-  handleFinalizeStagingStack,
+  handleReinforceOpponentBuildWithStack,
+  handleFinalizeStagingStack
 } from './game-logic/index.js';
 import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand, getCardId, calculateCardSum, canPartitionIntoSums } from './game-logic/index.js';
-import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild, validateReinforceBuildWithStack, validateMergeIntoOwnBuild, validateExtendToMerge, validateFinalizeStagingStack } from './game-logic/validation.js';
+import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild, validateReinforceBuildWithStack, validateMergeIntoOwnBuild, validateExtendToMerge, validateFinalizeStagingStack, validateReinforceOpponentBuildWithStack } from './game-logic/validation.js';
 
 // Import notification system
 import { useNotifications } from './styles/NotificationSystem';
@@ -307,6 +308,15 @@ export const useGameActions = () => {
           if (!targetCard) { showError("Target card for stack not found."); return currentGameState; }
           if (getCardId(draggedCard) === getCardId(targetCard)) return currentGameState; // Prevent self-drop
 
+          // --- NEW VALIDATION: Enforce one temp stack at a time ---
+          const playerAlreadyHasTempStack = tableCards.some(
+            s => s.type === 'temporary_stack' && s.owner === currentPlayer
+          );
+          if (playerAlreadyHasTempStack) {
+            showError("You can only have one staging stack at a time. Try adding to your existing stack.");
+            return currentGameState;
+          }
+
           // Find original index of the target card to preserve position
           const targetIndex = tableCards.findIndex(c => getCardId(c) === getCardId(targetCard));
 
@@ -433,6 +443,14 @@ export const useGameActions = () => {
           // If no direct actions are possible, check if we should create a staging stack.
           const playerOwnsBuild = tableCards.find(c => c.type === 'build' && c.owner === currentPlayer);
           if (playerOwnsBuild && draggedItem.source === 'hand') {
+            // --- NEW VALIDATION: Enforce one temp stack at a time ---
+            const playerAlreadyHasTempStack = tableCards.some(
+              s => s.type === 'temporary_stack' && s.owner === currentPlayer
+            );
+            if (playerAlreadyHasTempStack) {
+              showError("You can only have one staging stack at a time. Try adding to your existing stack.");
+              return currentGameState;
+            }
             // The player has a build and is trying to combine their hand card with a table card.
             // Assume they are starting a staging stack.
             const { card: draggedCard } = draggedItem;
@@ -479,6 +497,8 @@ export const useGameActions = () => {
             }
             return handleReinforceBuildWithStack(currentGameState, stagingStack, buildToDropOn);
           } else {
+          // No hand cards in stack, so this is a staging move.
+          if (buildToDropOn.owner === currentPlayer) {
             // This is a "Merge" action with only table cards that does NOT end the turn.
             const validation = validateMergeIntoOwnBuild(stagingStack, buildToDropOn, currentPlayer);
             if (!validation.valid) {
@@ -486,6 +506,15 @@ export const useGameActions = () => {
               return currentGameState; // Snap back on invalid merge
             }
             return handleMergeIntoOwnBuild(currentGameState, stagingStack, buildToDropOn);
+          } else {
+            // This is the new "Reinforce Opponent's Build" action that does NOT end the turn.
+            const validation = validateReinforceOpponentBuildWithStack(stagingStack, buildToDropOn, currentPlayer);
+            if (!validation.valid) {
+              showError(validation.message);
+              return currentGameState; // Snap back
+            }
+            return handleReinforceOpponentBuildWithStack(currentGameState, stagingStack, buildToDropOn);
+            }
           }
         }
 
@@ -610,6 +639,16 @@ export const useGameActions = () => {
     setGameState(currentGameState => {
       if (currentGameState.currentPlayer !== item.player) {
         showError("It's not your turn!");
+        return currentGameState;
+      }
+
+      // --- NEW VALIDATION: Enforce one temp stack at a time ---
+      const { tableCards, currentPlayer } = currentGameState;
+      const playerAlreadyHasTempStack = tableCards.some(
+        s => s.type === 'temporary_stack' && s.owner === currentPlayer
+      );
+      if (playerAlreadyHasTempStack) {
+        showError("You can only have one staging stack at a time.");
         return currentGameState;
       }
       return handleStageOpponentCard(currentGameState, item.card);

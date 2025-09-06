@@ -379,6 +379,39 @@ export const validateFinalizeStagingStack = (stack, playerHand, tableCards, curr
 };
 
 /**
+ * Validates if a temporary stack (containing only table cards) can be used to reinforce an opponent's build.
+ * This is a staging action that does not end the turn.
+ * @param {object} stack - The temporary stack to merge.
+ * @param {object} opponentBuild - The opponent's build to reinforce.
+ * @param {number} currentPlayer - The index of the current player.
+ * @returns {object} Validation result with valid flag and message.
+ */
+export const validateReinforceOpponentBuildWithStack = (stack, opponentBuild, currentPlayer) => {
+  // Rule 1: Target build must NOT be owned by the current player.
+  if (opponentBuild.owner === currentPlayer) {
+    return { valid: false, message: "This action is for reinforcing an opponent's build." };
+  }
+
+  // Rule 2: The stack must contain zero cards from the player's hand.
+  if (stack.cards.some(c => c.source === 'hand')) {
+    return { valid: false, message: "You cannot use a hand card for this type of reinforcement." };
+  }
+
+  // Rule 3: Opponent's build must be extendable.
+  if (!opponentBuild.isExtendable) {
+    return { valid: false, message: "This build cannot be extended." };
+  }
+
+  // Rule 4: The cards in the stack must be partitionable into groups that sum to the target build's value.
+  const cardsForPartition = stack.cards.map(({ source, ...card }) => card);
+  if (!canPartitionIntoSums(cardsForPartition, opponentBuild.value)) {
+    return { valid: false, message: `The cards in your stack cannot be grouped to match the build value of ${opponentBuild.value}.` };
+  }
+
+  return { valid: true };
+};
+
+/**
  * Validates game state integrity.
  * @param {object} gameState - The current game state.
  * @returns {object} Validation result with valid flag and issues array.
