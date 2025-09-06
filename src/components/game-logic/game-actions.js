@@ -24,7 +24,7 @@ export const handleTrail = (gameState, card) => {
 };
 
 export const handleBuild = (gameState, draggedItem, tableCardsInBuild, buildValue, biggerCard, smallerCard) => {
-  const { playerHands, tableCards, currentPlayer } = gameState;
+  const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
   const { card: playerCard, source } = draggedItem;
   const playerHand = playerHands[currentPlayer];
 
@@ -66,6 +66,7 @@ export const handleBuild = (gameState, draggedItem, tableCardsInBuild, buildValu
   });
 
   let finalTableCards;
+  let newBuild;
 
   if (matchingItemsOnTable.length > 0) {
     // Auto-grouping path: Consolidate all cards, placing matching table cards at the bottom.
@@ -78,7 +79,7 @@ export const handleBuild = (gameState, draggedItem, tableCardsInBuild, buildValu
 
     const itemsToRemoveFromTable = [...tableCardsInBuild, ...matchingItemsOnTable];
 
-    const newBuild = {
+    newBuild = {
       buildId: generateBuildId(),
       type: 'build',
       cards: allConsolidatedCards, // Use the new custom order
@@ -90,14 +91,42 @@ export const handleBuild = (gameState, draggedItem, tableCardsInBuild, buildValu
     finalTableCards.push(newBuild);
   } else {
     // Standard build path (no auto-grouping)
-    const newBuild = { buildId: generateBuildId(), type: 'build', cards: initialBuildCards, value: buildValue, owner: currentPlayer, isExtendable: true };
+    newBuild = { buildId: generateBuildId(), type: 'build', cards: initialBuildCards, value: buildValue, owner: currentPlayer, isExtendable: true };
     finalTableCards = removeCardsFromTable(tempTableCards, tableCardsInBuild);
     finalTableCards.push(newBuild);
+  }
+
+  // --- NEW: "Automatic Steal" from opponent's capture pile ---
+  let finalPlayerCaptures = playerCaptures;
+  const opponentIndex = 1 - currentPlayer;
+  const opponentCaps = playerCaptures[opponentIndex];
+
+  if (opponentCaps && opponentCaps.length > 0) {
+    const lastCaptureGroup = opponentCaps[opponentCaps.length - 1];
+    if (lastCaptureGroup && lastCaptureGroup.length > 0) {
+      const topCard = lastCaptureGroup[lastCaptureGroup.length - 1];
+      if (rankValue(topCard.rank) === buildValue) {
+        // Match found! Steal the card.
+        const stolenCard = { ...topCard }; // Create a clean copy
+
+        // 1. Add stolen card to the new build (at the bottom/base).
+        newBuild.cards.unshift(stolenCard);
+
+        // 2. Remove the card from the opponent's capture pile.
+        const newOpponentCaps = opponentCaps.map((group, index) =>
+          index === opponentCaps.length - 1 ? group.slice(0, -1) : group
+        ).filter(group => group.length > 0); // Remove empty groups
+
+        finalPlayerCaptures = [...playerCaptures];
+        finalPlayerCaptures[opponentIndex] = newOpponentCaps;
+      }
+    }
   }
 
   const newState = updateGameState(gameState, {
     playerHands: newPlayerHands,
     tableCards: finalTableCards,
+    playerCaptures: finalPlayerCaptures,
   });
 
   logGameState(`Player ${currentPlayer + 1} built a ${buildValue}`, nextPlayer(newState));
@@ -571,9 +600,15 @@ export const calculateScores = (playerCaptures) => {
   details[0].spadeCount = allPlayerCards[0].filter(c => c.suit === '♠').length;
   details[1].spadeCount = allPlayerCards[1].filter(c => c.suit === '♠').length;
 
-  // Award points for Most Cards (1 pt for 21+ cards)
-  if (details[0].cardCount >= 21) details[0].mostCards = 1;
-  if (details[1].cardCount >= 21) details[1].mostCards = 1;
+  // Award points for Most Cards (2 pts for >20 cards, 1 pt each for a 20-20 tie)
+  if (details[0].cardCount > 20) {
+    details[0].mostCards = 2;
+  } else if (details[1].cardCount > 20) {
+    details[1].mostCards = 2;
+  } else if (details[0].cardCount === 20 && details[1].cardCount === 20) {
+    details[0].mostCards = 1;
+    details[1].mostCards = 1;
+  }
 
   // Award points for Most Spades (2 pts for 6+ spades)
   if (details[0].spadeCount >= 6) details[0].mostSpades = 2;
@@ -742,7 +777,14 @@ export const handleCancelStagingStack = (gameState, stackToCancel) => {
   // 3. Update opponent's capture pile (if applicable)
   if (opponentCards.length > 0) {
     const opponentIndex = 1 - currentPlayer;
-    const opponentCaps = [...playerCaptures[opponentIndex], opponentCards];
+    let opponentCaps = [...(playerCaptures[opponentIndex] || [])];
+    if (opponentCaps.length > 0) {
+      // Add cards back to the last capture group
+      opponentCaps[opponentCaps.length - 1].push(...opponentCards);
+    } else {
+      // If opponent had no captures, create a new group
+      opponentCaps.push(opponentCards);
+    }
     playerCaptures = [...playerCaptures];
     playerCaptures[opponentIndex] = opponentCaps;
   }
@@ -781,4 +823,98 @@ export const handleMergeIntoOwnBuild = (gameState, stack, targetBuild) => {
 
   // 5. Return the new state, but DO NOT end the player's turn.
   return updateGameState(gameState, { tableCards: newTableCards });
+};
+
+/**
+ * Stages a card from the opponent's capture pile onto the table as a new temporary stack.
+ * This action does not end the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} opponentCard - The card from the opponent's capture pile.
+ * @returns {object} The updated game state.
+ */
+export const handleStageOpponentCard = (gameState, opponentCard) => {
+  let { playerCaptures, tableCards, currentPlayer } = gameState;
+
+  // 1. Remove the card from the opponent's capture pile
+  const opponentIndex = 1 - currentPlayer;
+  const opponentCaps = playerCaptures[opponentIndex] || [];
+
+  const newOpponentCaps = opponentCaps.map((group, index) =>
+    index === opponentCaps.length - 1 ? group.slice(0, -1) : group
+  ).filter(group => group.length > 0); // Remove empty groups if the last card was taken
+
+  const newPlayerCaptures = [...playerCaptures];
+  newPlayerCaptures[opponentIndex] = newOpponentCaps;
+
+  // 2. Create a new temporary stack on the table
+  const newStack = {
+    stackId: `temp-${Date.now()}`,
+    type: 'temporary_stack',
+    cards: [{ ...opponentCard, source: 'opponentCapture' }], // Tag the card with its origin
+    owner: currentPlayer,
+  };
+
+  // 3. Return the new state without ending the turn
+  return updateGameState(gameState, { playerCaptures: newPlayerCaptures, tableCards: [...tableCards, newStack] });
+};
+
+/**
+ * Extends an opponent's build and merges it into the player's own build.
+ * This is a staging action and does not end the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} handCard - The card from the player's hand.
+ * @param {object} opponentBuild - The opponent's build to extend and absorb.
+ * @param {object} ownBuild - The player's own build to merge into.
+ * @returns {object} The updated game state.
+ */
+export const handleExtendToMerge = (gameState, handCard, opponentBuild, ownBuild) => {
+  const { playerHands, tableCards, currentPlayer } = gameState;
+
+  // 1. Remove the card from the player's hand.
+  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, handCard);
+  if (!newPlayerHands) return gameState;
+
+  // 2. Combine all cards: own build cards + opponent build cards + hand card.
+  // Sort the combined cards to ensure bigger cards are at the bottom of the stack.
+  const allCards = [...ownBuild.cards, ...opponentBuild.cards, handCard].sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+
+  // 3. Create the new, massive build, replacing the player's original build.
+  const newMergedBuild = { ...ownBuild, cards: allCards, isExtendable: false };
+
+  // 4. Remove the old builds from the table and add the new one.
+  const newTableCards = removeCardsFromTable(tableCards, [ownBuild, opponentBuild]);
+  newTableCards.push(newMergedBuild);
+
+  // 5. Return the new state without ending the turn.
+  return updateGameState(gameState, { playerHands: newPlayerHands, tableCards: newTableCards });
+};
+
+/**
+ * Finalizes a temporary staging stack into a new, permanent build.
+ * This action ends the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} stack - The temporary stack to finalize.
+ * @returns {object} The updated game state.
+ */
+export const handleFinalizeStagingStack = (gameState, stack) => {
+  const { tableCards, currentPlayer } = gameState;
+
+  const buildValue = calculateCardSum(stack.cards.map(({ source, ...card }) => card));
+
+  // Create the new permanent build
+  const newBuild = {
+    buildId: generateBuildId(),
+    type: 'build',
+    cards: stack.cards.map(({ source, ...card }) => card).sort((a, b) => rankValue(b.rank) - rankValue(a.rank)),
+    value: buildValue,
+    owner: currentPlayer,
+    isExtendable: true,
+  };
+
+  const newTableCards = tableCards.filter(s => s.stackId !== stack.stackId);
+  newTableCards.push(newBuild);
+
+  const newState = updateGameState(gameState, { tableCards: newTableCards });
+  logGameState(`Player ${currentPlayer + 1} finalized a build of ${newBuild.value}`, nextPlayer(newState));
+  return nextPlayer(newState);
 };

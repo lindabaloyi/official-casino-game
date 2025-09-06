@@ -316,6 +316,69 @@ export const validateMergeIntoOwnBuild = (stack, targetBuild, currentPlayer) => 
 };
 
 /**
+ * Validates if a player can extend an opponent's build to merge it into their own.
+ * @param {object} ownBuild - The player's own active build.
+ * @param {object} opponentBuild - The opponent's build to be extended.
+ * @param {object} handCard - The card from the player's hand used to extend.
+ * @returns {object} Validation result with valid flag and message.
+ */
+export const validateExtendToMerge = (ownBuild, opponentBuild, handCard) => {
+  // Rule 1: Opponent's build must be extendable (not a base build or reinforced).
+  if (!opponentBuild.isExtendable) {
+    return {
+      valid: false,
+      message: "This build cannot be extended."
+    };
+  }
+
+  // Rule 2: Calculate the potential new value.
+  const newValue = opponentBuild.value + rankValue(handCard.rank);
+
+  // Rule 3: The new value must match the player's own build value.
+  if (newValue !== ownBuild.value) {
+    return { valid: false, message: `Cannot merge. The combined value (${newValue}) does not match your build of ${ownBuild.value}.` };
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Validates if a temporary stack can be finalized into a new, permanent build.
+ * @param {object} stack - The temporary stack to be finalized.
+ * @param {Array} playerHand - The hand of the current player.
+ * @param {Array} tableCards - The cards on the table.
+ * @param {number} currentPlayer - The index of the current player.
+ * @returns {object} Validation result with valid flag and message.
+ */
+export const validateFinalizeStagingStack = (stack, playerHand, tableCards, currentPlayer) => {
+  // Rule 1: Player cannot already have a build
+  const playerAlreadyHasBuild = tableCards.some(
+    item => item.type === 'build' && item.owner === currentPlayer
+  );
+  if (playerAlreadyHasBuild) {
+    return { valid: false, message: "You already have a build. You can only add to it." };
+  }
+
+  // Rule 2: The stack must contain exactly one card from the player's hand.
+  const handCardsInStack = stack.cards.filter(c => c.source === 'hand');
+  if (handCardsInStack.length !== 1) {
+    return { valid: false, message: "A new build must be made with one card from your hand." };
+  }
+
+  // Rule 3: Player must have a card in hand to capture the new build.
+  const buildValue = calculateCardSum(stack.cards.map(({ source, ...card }) => card));
+  const handCardUsed = handCardsInStack[0];
+  const remainingHand = playerHand.filter(c => c.rank !== handCardUsed.rank || c.suit !== handCardUsed.suit);
+
+  const canCapture = remainingHand.some(c => rankValue(c.rank) === buildValue);
+  if (!canCapture) {
+    return { valid: false, message: `You must have a ${buildValue} in your hand to create this build.` };
+  }
+
+  return { valid: true, buildValue };
+};
+
+/**
  * Validates game state integrity.
  * @param {object} gameState - The current game state.
  * @returns {object} Validation result with valid flag and issues array.

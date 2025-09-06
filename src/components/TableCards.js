@@ -26,7 +26,7 @@ const BuildStack = memo(({ build, onDropStack }) => {
   );
 });
 
-const DraggableTempStack = memo(({ stack, onDropOnCard, currentPlayer, onCancelStack }) => {
+const DraggableTempStack = memo(({ stack, onDropOnCard, currentPlayer, onCancelStack, onConfirmStack }) => {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'temp_stack', // A new, specific type for these stacks
     item: { stack, player: currentPlayer, source: 'temp_stack' },
@@ -42,6 +42,9 @@ const DraggableTempStack = memo(({ stack, onDropOnCard, currentPlayer, onCancelS
     <div ref={drag} style={{ opacity: isDragging ? 0.5 : 1, cursor: 'grab' }} className="build">
       <button className="cancel-stack-button" onClick={() => onCancelStack(stack)} aria-label="Cancel Staging Stack">
         &times;
+      </button>
+      <button className="confirm-stack-button" onClick={() => onConfirmStack(stack)} aria-label="Confirm Staging Stack">
+        &#x2713;
       </button>
       <CardStack
         stackId={stack.stackId}
@@ -77,7 +80,7 @@ const DraggableLooseCard = ({ card, onDropOnCard, currentPlayer }) => {
   );
 };
 
-const TableCards = ({ cards, onDropOnCard, currentPlayer, onCancelStack }) => {
+const TableCards = ({ cards, onDropOnCard, currentPlayer, onCancelStack, onConfirmStack }) => {
   const memoizedOnDropOnCard = useCallback(onDropOnCard, [onDropOnCard]);
 
   return (
@@ -90,7 +93,7 @@ const TableCards = ({ cards, onDropOnCard, currentPlayer, onCancelStack }) => {
             return <BuildStack key={item.buildId || index} build={item} onDropStack={memoizedOnDropOnCard} />;
           }
           if (item.type === 'temporary_stack') {
-            return <DraggableTempStack key={item.stackId || index} stack={item} onDropOnCard={memoizedOnDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} />;
+            return <DraggableTempStack key={item.stackId || index} stack={item} onDropOnCard={memoizedOnDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} onConfirmStack={onConfirmStack} />;
           }
           // Default to rendering a loose card
           return <DraggableLooseCard key={`loose-${item.rank}-${item.suit}` || index} card={item} onDropOnCard={memoizedOnDropOnCard} currentPlayer={currentPlayer} />;

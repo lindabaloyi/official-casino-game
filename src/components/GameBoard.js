@@ -22,50 +22,49 @@ const StatusSection = React.memo(({ round }) => (
   </section>
 ));
 
-const CapturedCardsSection = React.memo(({ playerCaptures, currentPlayer }) => (
-  <section
-    className="captured-cards-positioned"
-    aria-label="Captured Cards"
-  >
-    {playerCaptures.map((capturedGroups, index) => {
-      const allCapturedCards = (capturedGroups || []).flat();
-      const hasCards = allCapturedCards.length > 0;
-      const isOpponent = index !== currentPlayer;
-      const topCard = hasCards ? allCapturedCards[allCapturedCards.length - 1] : null;
+const CapturedCardsSection = React.memo(({ playerCaptures, currentPlayer }) => {
+  // Always render opponent first, then current player for strategic visibility.
+  const displayOrder = [1 - currentPlayer, currentPlayer];
 
-      const [{ isDragging }, drag] = useDrag(() => ({
-        type: ItemTypes.CARD,
-        item: { card: topCard, player: currentPlayer, source: 'opponentCapture' },
-        canDrag: () => hasCards && isOpponent,
-        collect: (monitor) => ({
-          isDragging: !!monitor.isDragging(),
-        }),
-      }), [topCard, currentPlayer, hasCards, isOpponent]);
+  return (
+    <section
+      className="captured-cards-positioned"
+      aria-label="Captured Cards"
+    >
+      {displayOrder.map(playerIndex => {
+        const capturedGroups = playerCaptures[playerIndex] || [];
+        const allCapturedCards = capturedGroups.flat();
+        const hasCards = allCapturedCards.length > 0;
+        const isOpponent = playerIndex !== currentPlayer;
+        const topCard = hasCards ? allCapturedCards[allCapturedCards.length - 1] : null;
 
-      return (
-        <div key={index} className="captured-cards" ref={drag} style={{ opacity: isDragging ? 0.5 : 1, cursor: (hasCards && isOpponent) ? 'grab' : 'default' }}>
-          <h3>Player {index + 1} Captures</h3>
-          {hasCards ? (
-            <CardStack
-              cards={allCapturedCards}
-              isBuild={true} // This ensures only the top card is visible
-            />
-          ) : (
-            <div className="cards-container empty"><p>No Cards.</p></div>
-          )}
-        </div>
-      );
-    })}
-  </section>
-));
+        const [{ isDragging }, drag] = useDrag(() => ({
+          type: ItemTypes.CARD,
+          item: { card: topCard, player: currentPlayer, source: 'opponentCapture' },
+          canDrag: () => hasCards && isOpponent,
+          collect: (monitor) => ({
+            isDragging: !!monitor.isDragging(),
+          }),
+        }), [topCard, currentPlayer, hasCards, isOpponent]);
 
-const TableCardsSection = React.memo(({ tableCards, onDropOnCard, currentPlayer, onCancelStack }) => (
+        return (
+          <div key={playerIndex} className="captured-cards" ref={drag} style={{ opacity: isDragging ? 0.5 : 1, cursor: (hasCards && isOpponent) ? 'grab' : 'default' }}>
+            <h3>Player {playerIndex + 1} Captures</h3>
+            {hasCards ? (<CardStack cards={allCapturedCards} isBuild={true} />) : (<div className="cards-container empty"><p>No Cards.</p></div>)}
+          </div>
+        );
+      })}
+    </section>
+  );
+});
+
+const TableCardsSection = React.memo(({ tableCards, onDropOnCard, currentPlayer, onCancelStack, onConfirmStack }) => (
   <section
     className="table-cards-section"
     aria-label="Table Cards"
     role="main"
   >
-    <TableCards cards={tableCards} onDropOnCard={onDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} />
+    <TableCards cards={tableCards} onDropOnCard={onDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} onConfirmStack={onConfirmStack} />
   </section>
 ));
 
@@ -150,7 +149,9 @@ function GameBoard({ onRestart }) {
     handleDropOnCard,
     handleModalAction,
     setModalInfo,
+    handleStageOpponentCardAction,
     handleCancelStagingStackAction,
+    handleConfirmStagingStackAction,
   } = useGameActions();
 
   const { showInfo } = useNotifications();
@@ -177,15 +178,20 @@ function GameBoard({ onRestart }) {
           return;
         }
         console.log(`Trail drop - Player: ${item.player}, Card: ${item.card.rank}`);
-        handleTrailCard(item.card, item.player);
-        // Note: handleTrailCard now handles state updates internally
+        if (item.source === 'opponentCapture') {
+          handleStageOpponentCardAction(item);
+        } else if (item.source === 'hand') {
+          handleTrailCard(item.card, item.player);
+        } else {
+          console.warn(`Card dropped on board from unhandled source: ${item.source}`);
+        }
       },
       collect: (monitor) => ({
         isOver: monitor.isOver(),
         canDrop: monitor.canDrop(),
       }),
     }),
-    [handleTrailCard, showInfo]
+    [handleTrailCard, handleStageOpponentCardAction]
   );
 
   // Keyboard navigation handler
@@ -216,6 +222,7 @@ function GameBoard({ onRestart }) {
           onDropOnCard={handleDropOnCard}
           currentPlayer={gameState.currentPlayer}
           onCancelStack={handleCancelStagingStackAction}
+          onConfirmStack={handleConfirmStagingStackAction}
         />
       </div>
       <PlayerHandsSection

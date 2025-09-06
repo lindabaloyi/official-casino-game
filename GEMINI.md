@@ -11,7 +11,7 @@ This guide provides a comprehensive overview of the Casino card game's architect
 
 ### Scoring Rules:
 
-*   **Cards:** 1 point for capturing 21 or more cards in total.
+*   **Cards:** 2 points for capturing more than 20 cards (21+). If both players have 20 cards, each gets 1 point.
 *   **Spades:** 2 points for capturing 6 or more spades.
 *   **Big Casino (10 of Diamonds):** 2 points
 *   **Little Casino (2 of Spades):** 1 point
@@ -39,6 +39,7 @@ A player can create a build in several ways:
 2.  **Stacking Build:** Drag multiple loose table cards into a temporary stack, then drop a hand card on top. The game will attempt to form a build from the combination.
 3.  **Base Build:** A more complex build where a player uses a hand card to bind multiple combinations of table cards that each sum to the hand card's value. For example, with a `9` in hand, a player could group a `[6, 3]` and a `[5, 4]` on the table into a single "base build" of 9. This build cannot be extended further.
 4.  **Auto-Grouping Build:** If a player creates a build that matches the value of other loose cards or builds already on the table, the game will automatically group them. The existing matching items are placed at the bottom of the stack, and the cards used for the new build action are placed on top. For example, if a player uses their `6` and a table `2` to build an `8`, and there is already a loose `8` on the table, the game will create one large build of `8` with the cards ordered `[8, 6, 2]`. This consolidated build cannot be extended further.
+5.  **Automatic Steal Build:** If a player creates a build whose value matches the top card of the opponent's capture pile, that card is automatically stolen from the opponent and added to the base of the new build. For example, if a player builds a `5` and the opponent's top captured card is a `5`, the opponent's `5` is added to the new build.
 
 #### Modifying Existing Builds
 A player can add cards to any build on the table (their own or an opponent's) to "reinforce" it. This is a powerful strategic move that makes the build larger and transfers its ownership. This is done using a flexible, on-the-fly "Staging Stack".

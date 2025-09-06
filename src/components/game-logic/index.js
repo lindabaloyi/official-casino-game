@@ -66,5 +66,8 @@ export {
   handleAddToStagingStack,
   handleDisbandStagingStack,
   handleCancelStagingStack,
-  handleMergeIntoOwnBuild
+  handleMergeIntoOwnBuild,
+  handleStageOpponentCard,
+  handleExtendToMerge,
+  handleFinalizeStagingStack
 } from './game-actions.js';

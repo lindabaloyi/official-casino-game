@@ -21,9 +21,12 @@ import {
   handleDisbandStagingStack,
   handleCancelStagingStack,
   handleMergeIntoOwnBuild,
+  handleStageOpponentCard,
+  handleExtendToMerge,
+  handleFinalizeStagingStack,
 } from './game-logic/index.js';
 import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand, getCardId, calculateCardSum, canPartitionIntoSums } from './game-logic/index.js';
-import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild, validateReinforceBuildWithStack, validateMergeIntoOwnBuild } from './game-logic/validation.js';
+import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild, validateReinforceBuildWithStack, validateMergeIntoOwnBuild, validateExtendToMerge, validateFinalizeStagingStack } from './game-logic/validation.js';
 
 // Import notification system
 import { useNotifications } from './styles/NotificationSystem';
@@ -138,6 +141,8 @@ export const useGameActions = () => {
           return handleAddToOwnBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
         case 'createBuildFromStack':
           return handleCreateBuildFromStack(currentGameState, draggedItem, action.payload.stackToBuildFrom);
+        case 'extendToMerge':
+          return handleExtendToMerge(currentGameState, draggedItem.card, action.payload.opponentBuild, action.payload.ownBuild);
         default:
           return currentGameState;
       }
@@ -157,68 +162,55 @@ export const useGameActions = () => {
     const opponentIndex = 1 - currentPlayer;
     const opponentCaptures = playerCaptures[opponentIndex] || [];
 
-    // Check if player can create new builds at all
     const canPlayerCreateBuild = !tableCards.some(c => c.type === 'build' && c.owner === currentPlayer);
 
-    // Count identical cards in player's hand
-    const identicalCardCount = countIdenticalCardsInHand(playerHand, draggedCard);
-
-    // Check for direct capture first (highest priority)
+    // --- Possibility 1: Capture ---
     if (rankValue(draggedCard.rank) === rankValue(looseCard.rank)) {
-      // Strategic choice: If player has only one identical card, must capture
-      if (identicalCardCount === 1) {
-        actions.push(createActionOption(
-          'capture',
-          `Capture ${looseCard.rank}`,
-          { draggedItem, targetCard: looseCard }
-        ));
-      } else {
-        // Player has multiple identical cards - offer choice between capture and build
-        actions.push(createActionOption(
-          'capture',
-          `Capture ${looseCard.rank}`,
-          { draggedItem, targetCard: looseCard }
-        ));
-
-        // Also offer build option
-        if (canPlayerCreateBuild) {
-          actions.push(createActionOption(
-            'build',
-            `Build ${rankValue(draggedCard.rank)}`,
-            { draggedItem, targetCard: looseCard, buildValue: rankValue(draggedCard.rank) }
-          ));
-        }
-
-        // Check for same-value sum builds (2+2=4, 3+3=6, 4+4=8, 5+5=10)
-        const cardValue = rankValue(draggedCard.rank);
-        if (cardValue >= 1 && cardValue <= 5) {
-          const sumBuildValue = cardValue * 2; // 2+2=4, 3+3=6, 4+4=8, 5+5=10
-
-          if (canPlayerCreateBuild) {
-            // Check if player has a card to capture this sum build later
-            const canCaptureSumBuild = remainingHand.some(c => rankValue(c.rank) === sumBuildValue);
-            if (canCaptureSumBuild) {
-              actions.push(createActionOption(
-                'build', `Build ${sumBuildValue}`,
-                { draggedItem, targetCard: looseCard, buildValue: sumBuildValue }
-              ));
-            }
-          }
-        }
-      }
-
-      // Check for enhanced capture using opponent's cards
-      const opponentMatchingCards = findOpponentMatchingCards(opponentCaptures, draggedCard);
-      opponentMatchingCards.forEach(opponentCard => {
-        actions.push(createActionOption(
-          'enhanced_capture',
-          `Capture ${looseCard.rank} using opponent's ${opponentCard.rank}`,
-          { draggedItem, targetCard: looseCard, opponentCard }
-        ));
-      });
+      actions.push(createActionOption(
+        'capture',
+        `Capture ${looseCard.rank}`,
+        { draggedItem, targetCard: looseCard }
+      ));
     }
 
-    // Check for base builds (complex multi-card builds) - only if not a direct capture scenario
+    // --- Possibility 2: Same-Value Build ---
+    if (canPlayerCreateBuild && rankValue(draggedCard.rank) === rankValue(looseCard.rank)) {
+      // To create a same-value build, you must have another card of the same rank in your hand to capture it.
+      const canCaptureBuild = remainingHand.some(c => rankValue(c.rank) === rankValue(draggedCard.rank));
+      if (canCaptureBuild) {
+        actions.push(createActionOption(
+          'build',
+          `Build ${rankValue(draggedCard.rank)}`,
+          { draggedItem, targetCard: looseCard, buildValue: rankValue(draggedCard.rank) }
+        ));
+      }
+    }
+
+    // --- Possibility 3: Sum Build ---
+    if (canPlayerCreateBuild) {
+      const sumBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);
+      if (sumBuildValue <= 10) {
+        // To create a sum build, you must have a card in hand matching the sum.
+        const canCaptureSumBuild = remainingHand.some(c => rankValue(c.rank) === sumBuildValue);
+        if (canCaptureSumBuild) {
+          const biggerCard = rankValue(draggedCard.rank) > rankValue(looseCard.rank) ? draggedCard : looseCard;
+          const smallerCard = rankValue(draggedCard.rank) > rankValue(looseCard.rank) ? looseCard : draggedCard;
+          actions.push(createActionOption(
+            'build',
+            `Build ${sumBuildValue}`,
+            {
+              draggedItem,
+              targetCard: looseCard,
+              buildValue: sumBuildValue,
+              biggerCard,
+              smallerCard
+            }
+          ));
+        }
+      }
+    }
+
+    // --- Possibility 4: Base Builds (if applicable) ---
     if (canPlayerCreateBuild && rankValue(draggedCard.rank) !== rankValue(looseCard.rank)) {
       const baseBuildCombinations = findBaseBuilds(draggedCard, looseCard, tableCards);
       baseBuildCombinations.forEach(combination => {
@@ -230,31 +222,16 @@ export const useGameActions = () => {
       });
     }
 
-    // Check for sum build (different value cards that add up)
-    if (canPlayerCreateBuild && rankValue(draggedCard.rank) !== rankValue(looseCard.rank)) {
-      const sumBuildValue = rankValue(draggedCard.rank) + rankValue(looseCard.rank);      
-      if (sumBuildValue <= 10 && remainingHand.some(c => rankValue(c.rank) === sumBuildValue)) {
-        // Determine stacking order: bigger card at bottom, smaller card on top
-        const draggedValue = rankValue(draggedCard.rank);
-        const targetValue = rankValue(looseCard.rank);
-        const biggerCard = Math.max(draggedValue, targetValue) === draggedValue ? draggedCard : looseCard;
-        const smallerCard = Math.max(draggedValue, targetValue) === draggedValue ? looseCard : draggedCard;
-
-        // For display: smaller card should be LAST in array (on top)
-        // biggerCard goes first (bottom), smallerCard goes last (top)
-
+    // --- Possibility 5: Enhanced Capture (using opponent's cards) ---
+    if (rankValue(draggedCard.rank) === rankValue(looseCard.rank)) {
+      const opponentMatchingCards = findOpponentMatchingCards(opponentCaptures, draggedCard);
+      opponentMatchingCards.forEach(opponentCard => {
         actions.push(createActionOption(
-          'build',
-          `Build ${sumBuildValue}`,
-          {
-            draggedItem,
-            targetCard: looseCard,
-            buildValue: sumBuildValue,
-            biggerCard,
-            smallerCard
-          }
+          'enhanced_capture',
+          `Capture ${looseCard.rank} using opponent's ${opponentCard.rank}`,
+          { draggedItem, targetCard: looseCard, opponentCard }
         ));
-      }
+      });
     }
 
     return actions;
@@ -409,6 +386,14 @@ export const useGameActions = () => {
           // --- Decision Logic ---
           if (actions.length === 0) {
             // If no final move is possible, assume the player wants to add the card to the stack.
+            
+            // --- NEW VALIDATION: Enforce one hand card per stack ---
+            const hasHandCard = stack.cards.some(c => c.source === 'hand');
+            if (hasHandCard) {
+              showError("You can only use one card from your hand in a staging stack.");
+              return currentGameState; // Abort the move
+            }
+
             return handleAddToStagingStack(currentGameState, draggedCard, stack);
           } else if (actions.length === 1) {
             return executeAction(currentGameState, actions[0]);
@@ -518,13 +503,25 @@ export const useGameActions = () => {
 
         // Possibility 2: Extend an opponent's build
         if (buildToDropOn.owner !== currentPlayer) {
-          const validation = validateAddToOpponentBuild(buildToDropOn, draggedCard, playerHand, tableCards, currentPlayer);
-          if (validation.valid) {
-            const newBuildValue = buildToDropOn.value + rankValue(draggedCard.rank);
-            actions.push(createActionOption(
-              'addToOpponentBuild', `Extend to ${newBuildValue}`,
-              { draggedItem, buildToAddTo: buildToDropOn }
-            ));
+          const playerOwnsBuild = tableCards.find(c => c.type === 'build' && c.owner === currentPlayer);
+
+          if (playerOwnsBuild) {
+            // Player has a build, so this is a potential "Extend-to-Merge"
+            const validation = validateExtendToMerge(playerOwnsBuild, buildToDropOn, draggedCard);
+            if (validation.valid) {
+              actions.push(createActionOption(
+                'extendToMerge',
+                `Merge into your build of ${playerOwnsBuild.value}`,
+                { draggedItem, opponentBuild: buildToDropOn, ownBuild: playerOwnsBuild }
+              ));
+            }
+          } else {
+            // Standard "Add to Opponent Build"
+            const validation = validateAddToOpponentBuild(buildToDropOn, draggedCard, playerHand, tableCards, currentPlayer);
+            if (validation.valid) {
+              const newBuildValue = buildToDropOn.value + rankValue(draggedCard.rank);
+              actions.push(createActionOption('addToOpponentBuild', `Extend to ${newBuildValue}`, { draggedItem, buildToAddTo: buildToDropOn }));
+            }
           }
         }
 
@@ -596,6 +593,8 @@ export const useGameActions = () => {
         return handleAddToOwnBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
       case 'createBuildFromStack':
         return handleCreateBuildFromStack(currentGameState, draggedItem, action.payload.stackToBuildFrom);
+      case 'extendToMerge':
+        return handleExtendToMerge(currentGameState, draggedItem.card, action.payload.opponentBuild, action.payload.ownBuild);
       default:
         return currentGameState;
     }
@@ -607,5 +606,29 @@ export const useGameActions = () => {
     });
   }, []);
 
-  return { gameState, modalInfo, handleTrailCard, handleDropOnCard, handleModalAction, setModalInfo, executeAction, handleCancelStagingStackAction };
+  const handleStageOpponentCardAction = useCallback((item) => {
+    setGameState(currentGameState => {
+      if (currentGameState.currentPlayer !== item.player) {
+        showError("It's not your turn!");
+        return currentGameState;
+      }
+      return handleStageOpponentCard(currentGameState, item.card);
+    });
+  }, [showError]);
+
+  const handleConfirmStagingStackAction = useCallback((stack) => {
+    setGameState(currentGameState => {
+      const { playerHands, tableCards, currentPlayer } = currentGameState;
+      const validation = validateFinalizeStagingStack(stack, playerHands[currentPlayer], tableCards, currentPlayer);
+
+      if (!validation.valid) {
+        showError(validation.message);
+        return currentGameState;
+      }
+
+      return handleFinalizeStagingStack(currentGameState, stack);
+    });
+  }, [showError]);
+
+  return { gameState, modalInfo, handleTrailCard, handleDropOnCard, handleModalAction, setModalInfo, executeAction, handleCancelStagingStackAction, handleStageOpponentCardAction, handleConfirmStagingStackAction };
 };
