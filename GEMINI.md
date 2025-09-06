@@ -11,106 +11,70 @@ This guide provides a comprehensive overview of the Casino card game's architect
 
 ### Scoring Rules:
 
-*   **6+ spades:** 2 point
-*   **21+ cards:** 1 point
+*   **Cards:** 1 point for capturing 21 or more cards in total.
+*   **Spades:** 2 points for capturing 6 or more spades.
 *   **Big Casino (10 of Diamonds):** 2 points
 *   **Little Casino (2 of Spades):** 1 point
-*   **Aces:** 1 point each
+*   **Aces:** 1 point for each Ace captured.
 
 ## 2. Advanced Gameplay Mechanics
 
-<<<<<<< HEAD
-### 2.1 The Combo Zone
+All complex player actions, such as creating builds or capturing multiple cards, are performed directly on the game table through a drag-and-drop stacking mechanic. The game logic infers the player's intent (e.g., Build, Capture, Add to Build) based on the cards being stacked and the context of the game. If a move is invalid, the cards automatically return to their original positions.
 
-To facilitate complex and strategic plays without diminishing player skill, the game includes a dedicated UI component known as the **Combo Zone**. This feature is the primary interface for all multi-card actions.
+### 2.1 Core Interaction: Stacking
 
-**Purpose:**
-The Combo Zone is a temporary staging area on the game board where players can manually assemble combinations of cards for either a Build or a Capture action. Its design philosophy is to provide a tool for players to execute their strategy, not an automated assistant that suggests or validates moves prematurely.
+*   **Initiating an Action:** A player initiates an action by dragging a card from their hand onto a card on the table, or by dragging table cards onto each other. This creates a temporary stack.
+*   **Intent Inference:** The game analyzes the final stack to determine the action:
+    *   **Capture:** If the sum of table cards in the stack equals the value of the player's hand card dropped on top, it's a capture.
+    *   **Build:** If the values don't match for a capture, the game checks if a valid build can be formed. This requires the player to hold a "capture card" in their hand matching the build's value.
+*   **Invalid Moves:** If no valid action can be inferred, the stack disbands.
 
-**Functionality:**
+### 2.2 Building
 
-* **Activation:** The zone activates when a player drags any card into it.
-* **Manual Assembly:** The player has full control to drag cards from their hand and/or the table into the zone. The only feedback provided during this stage is the real-time sum of the cards’ values.
-* **Player Declaration:** After assembling their desired combination, the player must explicitly declare their intent by clicking one of two buttons:
+Building allows players to combine cards on the table into a single unit with a specific value, which can be captured later.
 
-  * **Build:** To create a new build on the table. The action is validated to ensure the rules of building are met (e.g., one card from hand, player holds a matching capture card).
-  * **Capture:** For an immediate capture of table cards. The action is validated to ensure the player holds a hand card matching the sum of the staged table cards.
+#### Creating a New Build
+A player can create a build in several ways:
+1.  **Sum Build:** Drag a card from hand onto a table card. If the player holds a card matching the sum (e.g., drag a `2` from hand onto a `5` on the table to build a `7`, while holding a `7` in hand), a build of `7` is created.
+2.  **Stacking Build:** Drag multiple loose table cards into a temporary stack, then drop a hand card on top. The game will attempt to form a build from the combination.
+3.  **Base Build:** A more complex build where a player uses a hand card to bind multiple combinations of table cards that each sum to the hand card's value. For example, with a `9` in hand, a player could group a `[6, 3]` and a `[5, 4]` on the table into a single "base build" of 9. This build cannot be extended further.
+4.  **Auto-Grouping Build:** If a player creates a build that matches the value of other loose cards or builds already on the table, the game will automatically group them. The existing matching items are placed at the bottom of the stack, and the cards used for the new build action are placed on top. For example, if a player uses their `6` and a table `2` to build an `8`, and there is already a loose `8` on the table, the game will create one large build of `8` with the cards ordered `[8, 6, 2]`. This consolidated build cannot be extended further.
 
-This component replaces the need for separate modals or automated helpers for complex plays, ensuring a consistent and skill-based user experience.
+#### Modifying Existing Builds
+A player can add cards to any build on the table (their own or an opponent's) to "reinforce" it. This is a powerful strategic move that makes the build larger and transfers its ownership. This is done using a flexible, on-the-fly "Staging Stack".
 
-### 2.2 Combo Zone Scenarios
+*   **Creating and Growing a Staging Stack:**
+    *   **Context is Key:** If a player already owns a build, the game enters a "staging mode". Any combination of cards that is not an immediate capture will automatically create or add to a temporary Staging Stack instead of showing an error.
+    *   **How to Stage:** A player can create or add to a stack by dragging cards from multiple sources onto each other:
+        *   A card from their hand onto a loose table card.
+        *   A loose table card onto another loose table card.
+        *   A card from the opponent's capture pile onto a loose card or an existing Staging Stack.
+    *   The player's turn does not end while they are building their Staging Stack.
 
-The following scenarios illustrate common uses of the Combo Zone for advanced plays.
-=======
-### 2.1 On-Table Actions
+*   **Committing the Action:**
+    1.  Once the Staging Stack is assembled, the player drags the entire stack and drops it onto a target build.
+    2.  The game then validates the move.
 
-To create a seamless and intuitive experience, all complex actions are performed directly on the table by stacking cards. The game logic is designed to intelligently infer the player's intent (Capture or Build) based on the sequence of drags. If a move is invalid, the stacked cards will automatically return to their original positions.
+*   **Validation Rules:**
+    *   **Card Sources:** The final Staging Stack must contain exactly one card that originated from the player's hand.
+    *   **Value Partitioning:** The cards in the Staging Stack must be perfectly partitionable into groups that each sum to the target build's value. For example, adding a stack of `[9, 1, 8, 2]` to a build of `10` is valid because it finds the combos `(9+1)` and `(8+2)`.
 
-#### Core Interaction Rules
-*   **Invalid Drag Prevention:** When a player is building towards a target value (e.g., building a "7"), the UI should prevent them from dragging any card with a value greater than the target (e.g., 10, 9 , 8) into the build stack. This provides immediate, helpful feedback.
-*   **"Stealing" Cards:** Means the player can use the first card on the opponents capture, For any **Build** or **Add to Build** or or **Capture** action, the player can use cards from the opps capured cards and combine them with:
-    1.  Their own hand from the deck.
-    2.  Loose cards on the table.
-    3.  The opponent's capture pile. This makes the opponent's captured cards a strategic resource.
+*   **Outcome:** The move creates a single, larger build. This new build is owned by the current player and cannot be extended further.
+*   **Invalid Attempts:** If a player attempts to reinforce a build with a Staging Stack that fails validation, the Staging Stack will automatically disband. All cards within it (including the one from the player's hand) will be returned to the table as loose cards, and the player's turn will end.
 
----
->>>>>>> 4e20f960b2ad081eaa4a209f0f5b07eacae3c935
+### 2.3 Capturing
 
-#### Scenario 1: Multi-Card Capture
+Capturing is the primary way to score points. A player uses a card from their hand to take matching cards or builds from the table.
 
-A player with a `9♦` in hand wants to capture table cards `4♥`, `3♠`, and `2♣`.
-<<<<<<< HEAD
-1.  Drag table cards into the zone from highest to lowest value (`4♥` -> `3♠` -> `2♣`).
-2.  Drag the capturing card (`9♦`) from hand into the zone.
-3.  Click **"Capture"**.
-*Outcome:* The move is validated (4+3+2=9), and the cards are captured.
+*   **Simple Capture:** Use a hand card to capture one or more table cards/builds of the same value (e.g., use a `9` to capture a `9` and a build of `9`).
+*   **Multi-Card Capture:** Stack multiple table cards that sum to the value of a hand card, then drop the hand card on top to capture the stack (e.g., stack a `4` and a `3`, then drop a `7` from hand to capture).
 
-#### Scenario 2: Creating a Build
+### 2.4 Special Mechanic: Using Opponent's Captured Cards
 
-A player with a `7♥` and a `9♠` in hand wants to build a 9 using the `2♣` on the table.
-1.  Drag cards for the build into the zone from highest to lowest value (`7♥` from hand -> `2♣` from table).
-2.  Click **"Build"**.
-*Outcome:* The logic validates that the player holds a `9♠` to capture the build later. A new build of 9 is created on the table.
+In a unique strategic twist, a player can use the top card from their opponent's capture pile as if it were a loose card on the table for one of their actions.
 
-#### Scenario 3: Capturing a Build and a Loose Card
-
-A player with a `10♦` wants to capture both a build of 10 and a loose `10♣` from the table.
-1.  Drag the build of 10 and the loose `10♣` into the zone (order doesn't matter as they have the same value).
-2.  Drag the capturing card (`10♦`) from hand into the zone.
-3.  Click **"Capture"**.
-*Outcome:* The logic validates that the `10♦` matches the value of each item. All cards are captured.
-
-#### Scenario 4: Invalid Build Attempt (No Capture Card)
-
-A player with a `7♥` (but no 9) tries to build a 9 with a `2♣` from the table.
-1.  Drag `7♥` and `2♣` into the zone.
-2.  Click **"Build"**.
-*Outcome:* The move is invalid because the player does not hold a 9 to capture the build. An alert is shown, and cards are returned.
-
-#### Scenario 5: Adding to an Existing Build
-
-A player wants to add their `5♦` and the table's `4♣` to their own existing build of 9. The player holds a `9♣` to capture it later.
-1.  Drag items into the zone from highest to lowest value: the build of 9, the `5♦` from hand, then the `4♣` from the table.
-2.  Click **"Build"**.
-*Outcome:* The logic validates ownership, the sum of new cards (5+4=9), and that the player still holds a 9. The build is updated.
-=======
-*   **Stack Cards:** The player drags the table cards on top of each other to create a single temporary stack. The drag order must be  from highest at the bottom of the stack to lowest value at the top (4♥ -> 3♠ -> 2♣).
-*   **Execute Capture:** The player drags the capturing card (`9♦`) from their hand and drops it onto the temporary stack on the table.
-*   **Validation & Outcome:**
-    *   **Success:** The game validates that the sum of the stacked cards (4 + 3 + 2 = 9) equals the value of the hand card (`9♦`). All cards are moved to the player's capture pile.
-    *   **Failure:** If the sum does not match, the move is invalid. The stack disbands, and all cards return to their original positions.
-
-#### Scenario 2: Creating a Build
-
-A player with a `7♥` and a `9♠` (the required **capture card**) in hand wants to build a 9 using the `2♣` on the table.
-*   **Initiate Build:** The player drags the `7♥` from their hand and drops it directly onto the `2♣` on the table, creating a temporary stack.
-*   **Build Irder:** The game must rearrange the order, from highest at the bottom of the stack (7♥) to lowest value at the top (2♠) = (7♥ -> 2♠).
-*   **Validation & Outcome:**
-    *   **Success:** The game analyzes the stack. Since 7 ≠ 2, it's not a capture. It hypothesizes a build. It validates that (a) the sum is 9, and (b) the player holds a separate `9♠` in their hand to capture it later. A new, permanent build of 9 is created on the table.
-    *   **Failure:** If the player does not hold a 9, the move is invalid. The `7♥` returns to the player's hand.
-
-
->>>>>>> 4e20f960b2ad081eaa4a209f0f5b07eacae3c935
+*   **How it works:** A player can drag the top card from the opponent's capture pile and combine it with cards from their hand or the table to perform a **Build** or **Capture**.
+*   **Example (Temporal Build for Capture):** A player has a `9` in hand. The opponent's capture pile shows a `6`. The table has a `3`. The player can drag the opponent's `6` and the table's `3` together, then use their `9` to capture this temporary combination. The `6` is removed from the opponent's pile and added to the current player's capture.
 
 ## 3. Core Game Logic (`src/src/components/game-logic.js`)
 
@@ -118,14 +82,18 @@ This file is the heart of the game, containing all the rules and state managemen
 
 ### Key Functions:
 
-The logic is organized into several pure functions that manage the game state:
-*   **Setup & Game Flow:** `initializeGame()`, `isRoundOver()`, `isGameOver()`, and `calculateScores()`.
-*   **Player Actions:** A suite of `handle...` functions like `handleTrail()`, `handleBuild()`, `handleCapture()`, `handleAddToBuild()`, and their complex counterparts for the Combo Zone.
-<<<<<<< HEAD
-*   **Validation & Helpers:** Functions like `findValidCaptures()` and `findValidBuilds()` determine possible moves for the player.
-=======
-
->>>>>>> 4e20f960b2ad081eaa4a209f0f5b07eacae3c935
+The logic is organized into several pure functions that manage the game state, grouped by purpose:
+*   **Setup & Game Flow:** `initializeGame()`, `startNextRound()`, `handleSweep()`, `isRoundOver()`, `isGameOver()`, `endGame()`, and `calculateScores()`.
+*   **Player Actions:**
+    *   `handleTrail()`: Plays a card from hand to the table without capturing or building.
+    *   `handleCapture()`: Manages all capture actions, including those involving an opponent's cards.
+    *   `handleBuild()`: The primary function for creating a simple sum-build.
+    *   `handleCreateBuildFromStack()`: Creates a build from a temporary stack of cards on the table.
+    *   `handleBaseBuild()`: Creates a complex, multi-combination build.
+    *   `handleAddToOwnBuild()`: Adds a card to a player's own existing build (increasing or reinforcing).
+    *   `handleAddToOpponentBuild()`: Adds a card to an opponent's build, "stealing" it.
+    *   `handleTemporalBuild()`: A helper for using an opponent's captured card in a play.
+*   **Validation & Helpers:** A suite of functions like `findValidCaptures()`, `findValidBuilds()`, and `validateBuild()` determine possible moves and ensure rules are followed.
 
 ### Game State Object:
 
@@ -186,13 +154,12 @@ The UI is built with React and organized into several components.
 ### UI Components
 
 The UI is managed by `App.js` and the main `GameBoard.js` component. Key display components include `PlayerHand.js`, `TableCards.js`, and `CapturedCards.js`.
-
-Interactive elements are handled by `DraggableCard.js`, `CardStack.js` for builds, and the `ActionModal.js` for simple choices. The most important interactive component is the `ComboZone.js`, which serves as the staging area for all complex moves.
+Interactive elements are handled by `DraggableCard.js` and `CardStack.js` (for builds and other stacks). The on-table stacking mechanic, managed within `GameBoard.js`, serves as the primary interface for all complex moves, removing the need for separate modals or staging zones for most actions.
 
 ### Custom Hooks:
 
 * **`useGameState.js`**: A hook that encapsulates the game's state and provides action dispatchers (`trailCard`, `build`, `capture`, etc.).
-* **`useGameActions.js`**: A more specialized hook used by `GameBoard.js` to handle complex user interactions, including managing the temporary state of the Combo Zone before a play is committed. It integrates with `game-logic.js` to update the game state.
+* **`useGameActions.js`**: A more specialized hook used by `GameBoard.js` to handle complex user interactions, including managing the temporary state of card stacks on the table before a play is committed. It integrates with `game-logic.js` to validate and update the game state.
 
 ## 5. Development Guidelines
 

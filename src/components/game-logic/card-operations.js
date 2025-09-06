@@ -54,16 +54,18 @@ export const removeCardFromHand = (playerHands, currentPlayer, cardToRemove) => 
  * @returns {Array} Updated table cards.
  */
 export const removeCardsFromTable = (tableCards, cardsToRemove) => {
-  const identifiers = new Set(
-    cardsToRemove.map(c => c.buildId ? c.buildId : getCardId(c))
-  );
+  const identifiersToRemove = new Set();
+  cardsToRemove.forEach(item => {
+    if (item.buildId) identifiersToRemove.add(item.buildId);
+    else if (item.stackId) identifiersToRemove.add(item.stackId);
+    else if (item.rank && item.suit) identifiersToRemove.add(getCardId(item));
+  });
 
   return tableCards.filter(item => {
-    if (item.type === 'build') {
-      return !identifiers.has(item.buildId);
-    } else {
-      return !identifiers.has(getCardId(item));
-    }
+    if (item.buildId) return !identifiersToRemove.has(item.buildId);
+    if (item.stackId) return !identifiersToRemove.has(item.stackId);
+    if (item.rank && item.suit) return !identifiersToRemove.has(getCardId(item));
+    return true; // Keep items we don't know how to identify
   });
 };
 

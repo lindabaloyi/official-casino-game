@@ -4,11 +4,13 @@ import Card from './Card';
 
 const ItemTypes = {
   CARD: 'card',
+  TEMP_STACK: 'temp_stack',
 };
 
 const CardStack = ({ cards, onDropStack, stackId, buildValue, isBuild = false }) => {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
-    accept: ItemTypes.CARD,
+    // This drop target can now accept single cards or temporary stacks
+    accept: [ItemTypes.CARD, ItemTypes.TEMP_STACK],
     drop: (item) => {
       // The target is the top card of the stack.
       // In a loose card stack, there's only one card.

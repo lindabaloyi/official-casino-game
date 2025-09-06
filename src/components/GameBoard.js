@@ -59,13 +59,13 @@ const CapturedCardsSection = React.memo(({ playerCaptures, currentPlayer }) => (
   </section>
 ));
 
-const TableCardsSection = React.memo(({ tableCards, onDropOnCard, currentPlayer }) => (
+const TableCardsSection = React.memo(({ tableCards, onDropOnCard, currentPlayer, onCancelStack }) => (
   <section
     className="table-cards-section"
     aria-label="Table Cards"
     role="main"
   >
-    <TableCards cards={tableCards} onDropOnCard={onDropOnCard} currentPlayer={currentPlayer} />
+    <TableCards cards={tableCards} onDropOnCard={onDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} />
   </section>
 ));
 
@@ -150,6 +150,7 @@ function GameBoard({ onRestart }) {
     handleDropOnCard,
     handleModalAction,
     setModalInfo,
+    handleCancelStagingStackAction,
   } = useGameActions();
 
   const { showInfo } = useNotifications();
@@ -214,6 +215,7 @@ function GameBoard({ onRestart }) {
           tableCards={gameState.tableCards}
           onDropOnCard={handleDropOnCard}
           currentPlayer={gameState.currentPlayer}
+          onCancelStack={handleCancelStagingStackAction}
         />
       </div>
       <PlayerHandsSection

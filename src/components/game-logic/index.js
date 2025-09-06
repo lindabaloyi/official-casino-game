@@ -59,5 +59,10 @@ export {
   startNextRound,
   handleSweep,
   calculateScores,
-  endGame
+  endGame,
+  handleCreateStagingStack,
+  handleReinforceBuildWithStack,
+  handleAddToStagingStack,
+  handleDisbandStagingStack,
+  handleCancelStagingStack
 } from './game-actions.js';

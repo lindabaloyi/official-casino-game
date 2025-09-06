@@ -26,6 +26,37 @@ const BuildStack = memo(({ build, onDropStack }) => {
   );
 });
 
+const DraggableTempStack = memo(({ stack, onDropOnCard, currentPlayer, onCancelStack }) => {
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: 'temp_stack', // A new, specific type for these stacks
+    item: { stack, player: currentPlayer, source: 'temp_stack' },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  }), [stack, currentPlayer]);
+
+  const memoizedOnDropStack = (draggedItem) => onDropOnCard(draggedItem, { type: 'temporary_stack', stackId: stack.stackId });
+  const stackValue = calculateCardSum(stack.cards);
+
+  return (
+    <div ref={drag} style={{ opacity: isDragging ? 0.5 : 1, cursor: 'grab' }} className="build">
+      <button className="cancel-stack-button" onClick={() => onCancelStack(stack)} aria-label="Cancel Staging Stack">
+        &times;
+      </button>
+      <CardStack
+        stackId={stack.stackId}
+        cards={stack.cards}
+        onDropStack={memoizedOnDropStack}
+        isBuild={true}
+        buildValue={stackValue}
+      />
+      <div className="temp-stack-indicator">
+        Staging
+      </div>
+    </div>
+  );
+});
+
 const DraggableLooseCard = ({ card, onDropOnCard, currentPlayer }) => {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'card',
@@ -46,7 +77,7 @@ const DraggableLooseCard = ({ card, onDropOnCard, currentPlayer }) => {
   );
 };
 
-const TableCards = ({ cards, onDropOnCard, currentPlayer }) => {
+const TableCards = ({ cards, onDropOnCard, currentPlayer, onCancelStack }) => {
   // Separate loose cards from builds to render them differently.
   const looseCards = React.useMemo(() => cards.filter(c => !c.type), [cards]);
   const builds = React.useMemo(() => cards.filter(c => c.type === 'build'), [cards]);
@@ -68,21 +99,7 @@ const TableCards = ({ cards, onDropOnCard, currentPlayer }) => {
               <BuildStack key={build.buildId} build={build} onDropStack={memoizedOnDropOnCard} />
             ))}
             {/* Render each temporary stack for capture */}
-            {temporaryStacks.map((stack) => {
-              const memoizedOnDropStack = (draggedItem) => onDropOnCard(draggedItem, { type: 'temporary_stack', stackId: stack.stackId });
-              const stackValue = calculateCardSum(stack.cards);
-              return (
-                <div key={stack.stackId} className="build">
-                  <CardStack
-                    stackId={stack.stackId}
-                    cards={stack.cards}
-                    onDropStack={memoizedOnDropStack}
-                    isBuild={true} // Show as a collapsed stack
-                    buildValue={stackValue} // Display the live sum
-                  />
-                </div>
-              );
-            })}
+            {temporaryStacks.map((stack) => <DraggableTempStack key={stack.stackId} stack={stack} onDropOnCard={memoizedOnDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} />)}
           </>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { updateGameState, nextPlayer } from './game-state.js';
 import { rankValue, removeCardFromHand, removeCardsFromTable, sortCardsByRank, calculateCardSum, generateBuildId, findOpponentMatchingCards, createCaptureStack } from './card-operations.js';
+import { canPartitionIntoSums } from './algorithms.js';
 import { validateBuild, validateAddToBuild } from './validation.js';
 import { logGameState } from './game-state.js';
 
@@ -23,58 +24,80 @@ export const handleTrail = (gameState, card) => {
 };
 
 export const handleBuild = (gameState, draggedItem, tableCardsInBuild, buildValue, biggerCard, smallerCard) => {
-  const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
+  const { playerHands, tableCards, currentPlayer } = gameState;
   const { card: playerCard, source } = draggedItem;
   const playerHand = playerHands[currentPlayer];
 
-  // Validate the build
+  // 1. Validate the build
   const validation = validateBuild(playerHand, playerCard, buildValue, tableCards, currentPlayer);
   if (!validation.valid) {
     console.warn(validation.message);
     return gameState;
   }
 
+  // 2. Remove the played card from its source (hand or table)
   let newPlayerHands = playerHands;
-  let newTableCards = tableCards;
-  let newPlayerCaptures = playerCaptures;
-
-  // Remove the played card from its source
+  let tempTableCards = tableCards; // Start with the original table
   if (source === 'table') {
-    newTableCards = removeCardsFromTable(tableCards, [playerCard]);
+    tempTableCards = removeCardsFromTable(tableCards, [playerCard]);
   } else { // Default to hand for builds
     newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
     if (!newPlayerHands) return gameState;
   }
 
-  let allCardsInBuild;
-
-  // Handle stacking order based on build type
+  // 3. Determine the cards that make up the initial build action
+  let initialBuildCards;
   if (biggerCard && smallerCard) {
-    // Sum build: bigger card at bottom, smaller card on top
-    allCardsInBuild = [biggerCard, smallerCard];
+    // Sum build: e.g., player's 6 on table's 2
+    initialBuildCards = [biggerCard, smallerCard];
   } else {
-    // Same-value build: table cards at bottom (sorted), player's card on top
+    // Same-value build: e.g., player's 8 on table's 8
     const sortedTableCards = sortCardsByRank(tableCardsInBuild);
-    allCardsInBuild = [...sortedTableCards, playerCard];
+    initialBuildCards = [...sortedTableCards, playerCard];
   }
 
-  const newBuild = {
-    buildId: generateBuildId(),
-    type: 'build',
-    cards: allCardsInBuild,
-    value: buildValue,
-    owner: currentPlayer,
-    isExtendable: true,
-  };
+  // 4. NEW: Check for other matching items on the table to auto-group
+  const buildCardIds = tableCardsInBuild.map(c => `${c.rank}${c.suit}`);
+  const matchingItemsOnTable = tempTableCards.filter(item => {
+    if (item.value !== buildValue) return false;
+    if (item.type === 'build') return true; // Always group with existing builds
+    if (!item.type && !buildCardIds.includes(`${item.rank}${item.suit}`)) return true; // It's a loose card not in our build action
+    return false;
+  });
 
-  // Update game state
-  const finalTableCards = removeCardsFromTable(newTableCards, tableCardsInBuild);
-  finalTableCards.push(newBuild);
+  let finalTableCards;
+
+  if (matchingItemsOnTable.length > 0) {
+    // Auto-grouping path: Consolidate all cards, placing matching table cards at the bottom.
+    const baseCards = matchingItemsOnTable.flatMap(item => item.cards || [item]);
+    const sortedBaseCards = sortCardsByRank(baseCards);
+
+    // The cards from the player's immediate action are placed on top of the base.
+    // initialBuildCards is already ordered correctly (e.g., [bigger, smaller] for a sum build).
+    const allConsolidatedCards = [...sortedBaseCards, ...initialBuildCards];
+
+    const itemsToRemoveFromTable = [...tableCardsInBuild, ...matchingItemsOnTable];
+
+    const newBuild = {
+      buildId: generateBuildId(),
+      type: 'build',
+      cards: allConsolidatedCards, // Use the new custom order
+      value: buildValue,
+      owner: currentPlayer,
+      isExtendable: false,
+    };
+    finalTableCards = removeCardsFromTable(tempTableCards, itemsToRemoveFromTable);
+    finalTableCards.push(newBuild);
+  } else {
+    // Standard build path (no auto-grouping)
+    const newBuild = { buildId: generateBuildId(), type: 'build', cards: initialBuildCards, value: buildValue, owner: currentPlayer, isExtendable: true };
+    finalTableCards = removeCardsFromTable(tempTableCards, tableCardsInBuild);
+    finalTableCards.push(newBuild);
+  }
 
   const newState = updateGameState(gameState, {
     playerHands: newPlayerHands,
     tableCards: finalTableCards,
-    playerCaptures: newPlayerCaptures,
   });
 
   logGameState(`Player ${currentPlayer + 1} built a ${buildValue}`, nextPlayer(newState));
@@ -121,6 +144,63 @@ export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo)
   });
 
   logGameState(`Player ${currentPlayer + 1} added to build of ${newBuild.value}`, nextPlayer(newState));
+  return nextPlayer(newState);
+};
+
+export const handleReinforceBuildWithStack = (gameState, stack, targetBuild) => {
+  let { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
+
+  // Validation is handled in useGameActions.js
+
+  // --- EXECUTION ---
+  // The card from hand was already removed when the staging stack was created.
+  const newPlayerHands = playerHands;
+  const cardsForPartition = stack.cards.map(({ source, ...card }) => card); // Strip source for validation
+
+  const opponentCardsInStack = stack.cards.filter(c => c.source === 'opponentCapture');
+  let newPlayerCaptures = [...playerCaptures];
+  if (opponentCardsInStack.length > 0) {
+    const opponentIndex = 1 - currentPlayer;
+    let opponentCaps = [...playerCaptures[opponentIndex]];
+    let cardsToRemoveCount = opponentCardsInStack.length;
+
+    while (cardsToRemoveCount > 0 && opponentCaps.length > 0) {
+      let lastGroup = opponentCaps[opponentCaps.length - 1];
+      let cardsPoppedCount = Math.min(cardsToRemoveCount, lastGroup.length);
+      lastGroup.splice(-cardsPoppedCount); // Remove cards from the end
+      cardsToRemoveCount -= cardsPoppedCount;
+      if (lastGroup.length === 0) {
+        opponentCaps.pop(); // Remove the group if it's now empty
+      }
+    }
+    newPlayerCaptures[opponentIndex] = opponentCaps;
+  }
+
+  // Create the new, reinforced build by concatenating the existing build with the new cards.
+  // The cards from the stack are already ordered as the user arranged them.
+  const allNewBuildCards = [...targetBuild.cards, ...cardsForPartition];
+
+  const newBuild = {
+    buildId: generateBuildId(),
+    type: 'build',
+    cards: allNewBuildCards,
+    value: targetBuild.value, // The value of the build does not change
+    owner: currentPlayer,      // Ownership is always transferred to the current player
+    isExtendable: false,       // Reinforced builds cannot be extended further
+  };
+
+  // Update the table by removing the old build and the temporary stack, then adding the new build.
+  const itemsToRemoveFromTable = [targetBuild, stack];
+  const finalTableCards = removeCardsFromTable(tableCards, itemsToRemoveFromTable);
+  finalTableCards.push(newBuild);
+
+  const newState = updateGameState(gameState, {
+    playerHands: newPlayerHands,
+    tableCards: finalTableCards,
+    playerCaptures: newPlayerCaptures,
+  });
+
+  logGameState(`Player ${currentPlayer + 1} reinforced a build of ${targetBuild.value}`, nextPlayer(newState));
   return nextPlayer(newState);
 };
 
@@ -532,4 +612,131 @@ export const calculateScores = (playerCaptures) => {
 export const endGame = (gameState) => {
   const { scores, details, winner } = calculateScores(gameState.playerCaptures);
   return updateGameState(gameState, { scores, winner, scoreDetails: details, gameOver: true });
+};
+
+/**
+ * Creates a temporary "staging stack" on the table without ending the player's turn.
+ * This is used when a player who already owns a build combines cards on the table.
+ * @param {object} gameState - The current game state.
+ * @param {object} handCard - The card from the player's hand.
+ * @param {object} tableCard - The loose card on the table to stack on.
+ * @returns {object} The updated game state with the new staging stack.
+ */
+export const handleCreateStagingStack = (gameState, handCard, tableCard) => {
+  const { playerHands, tableCards, currentPlayer } = gameState;
+
+  // Determine the correct stacking order: bigger card at the bottom, smaller on top.
+  const orderedCards = rankValue(handCard.rank) > rankValue(tableCard.rank)
+    ? [{ ...handCard, source: 'hand' }, { ...tableCard, source: 'table' }]
+    : [{ ...tableCard, source: 'table' }, { ...handCard, source: 'hand' }];
+
+  const newStack = {
+    stackId: `temp-${Date.now()}`,
+    type: 'temporary_stack',
+    cards: orderedCards,
+    owner: currentPlayer,
+  };
+
+  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, handCard);
+  if (!newPlayerHands) return gameState;
+
+  const newTableCards = removeCardsFromTable(tableCards, [tableCard]);
+  newTableCards.push(newStack);
+
+  return updateGameState(gameState, { playerHands: newPlayerHands, tableCards: newTableCards });
+};
+
+/**
+ * Adds a card from the player's hand to an existing temporary staging stack.
+ * This does not end the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} handCard - The card from the player's hand to add.
+ * @param {object} targetStack - The temporary stack to add the card to.
+ * @returns {object} The updated game state.
+ */
+export const handleAddToStagingStack = (gameState, handCard, targetStack) => {
+  const { playerHands, tableCards, currentPlayer } = gameState;
+
+  // 1. Remove card from hand
+  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, handCard);
+  if (!newPlayerHands) return gameState;
+
+  // 2. Create the updated stack by adding the new card
+  const newStack = { ...targetStack, cards: [...targetStack.cards, { ...handCard, source: 'hand' }] };
+
+  // 3. Update the table by replacing the old stack with the new one
+  const newTableCards = tableCards.filter(s => s.stackId !== targetStack.stackId);
+  newTableCards.push(newStack);
+
+  // 4. Return the new state (turn does not end)
+  return updateGameState(gameState, { playerHands: newPlayerHands, tableCards: newTableCards });
+};
+
+/**
+ * Disbands a temporary staging stack when an invalid move is attempted with it.
+ * Returns its cards to the table as loose cards and ends the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} stackToDisband - The temporary stack to disband.
+ * @returns {object} The updated game state.
+ */
+export const handleDisbandStagingStack = (gameState, stackToDisband) => {
+  const { tableCards, currentPlayer } = gameState;
+
+  // 1. Get the cards from the stack, stripping the 'source' property so they become standard loose cards.
+  const looseCards = stackToDisband.cards.map(({ source, ...card }) => card);
+
+  // 2. Remove the temporary stack from the table.
+  const newTableCards = tableCards.filter(s => s.stackId !== stackToDisband.stackId);
+
+  // 3. Add the loose cards back to the table.
+  newTableCards.push(...looseCards);
+
+  const newState = updateGameState(gameState, { tableCards: newTableCards });
+  logGameState(`Player ${currentPlayer + 1}'s temporary stack was invalid and disbanded.`, nextPlayer(newState));
+  return nextPlayer(newState);
+};
+
+/**
+ * Cancels a temporary staging stack, returning its cards to their original positions.
+ * This does not end the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} stackToCancel - The temporary stack to cancel.
+ * @returns {object} The updated game state.
+ */
+export const handleCancelStagingStack = (gameState, stackToCancel) => {
+  let { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
+
+  const handCards = [];
+  const newLooseCards = [];
+  const opponentCards = [];
+
+  // 1. Sort cards back to their original sources by reading their 'source' property
+  for (const card of stackToCancel.cards) {
+    const cardData = { ...card };
+    delete cardData.source; // Clean up the source property
+
+    if (card.source === 'hand') handCards.push(cardData);
+    else if (card.source === 'opponentCapture') opponentCards.push(cardData);
+    else newLooseCards.push(cardData); // Default to table
+  }
+
+  // 2. Update player's hand
+  const currentHand = [...playerHands[currentPlayer], ...handCards];
+  playerHands = [...playerHands];
+  playerHands[currentPlayer] = currentHand;
+
+  // 3. Update opponent's capture pile (if applicable)
+  if (opponentCards.length > 0) {
+    const opponentIndex = 1 - currentPlayer;
+    const opponentCaps = [...playerCaptures[opponentIndex], opponentCards];
+    playerCaptures = [...playerCaptures];
+    playerCaptures[opponentIndex] = opponentCaps;
+  }
+
+  // 4. Update table cards by removing the stack and adding back any loose cards
+  let newTableCards = tableCards.filter(s => s.stackId !== stackToCancel.stackId);
+  newTableCards.push(...newLooseCards);
+
+  // 5. Return the new state (turn does not end)
+  return updateGameState(gameState, { playerHands, tableCards: newTableCards, playerCaptures });
 };

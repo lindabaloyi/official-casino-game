@@ -4,6 +4,7 @@
  */
 
 import { rankValue, calculateCardSum, isValidBuildType } from './card-operations.js';
+import { canPartitionIntoSums } from './algorithms.js';
 
 /**
  * Validates if a build can be created with the given parameters.
@@ -259,6 +260,28 @@ export const validateTemporaryStackBuild = (stack, handCard, playerHand, tableCa
   }
 
   return { valid: true, newValue: newBuildValue };
+};
+
+export const validateReinforceBuildWithStack = (stack, targetBuild) => {
+  // Rule 1: The stack must contain exactly one card from the player's hand.
+  const handCardsInStack = stack.cards.filter(c => c.source === 'hand');
+  if (handCardsInStack.length !== 1) {
+    return {
+      valid: false,
+      message: "You must use exactly one card from your hand to add to a build."
+    };
+  }
+
+  // Rule 2: The cards in the stack must be partitionable into groups that sum to the target build's value.
+  const cardsForPartition = stack.cards.map(({ source, ...card }) => card); // Strip source for validation
+  if (!canPartitionIntoSums(cardsForPartition, targetBuild.value)) {
+    return {
+      valid: false,
+      message: `The cards in your stack cannot be grouped to match the build value of ${targetBuild.value}.`
+    };
+  }
+
+  return { valid: true };
 };
 
 /**
