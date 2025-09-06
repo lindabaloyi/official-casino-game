@@ -625,6 +625,12 @@ export const endGame = (gameState) => {
 export const handleCreateStagingStack = (gameState, handCard, tableCard) => {
   const { playerHands, tableCards, currentPlayer } = gameState;
 
+  const targetIndex = tableCards.findIndex(c => !c.type && c.rank === tableCard.rank && c.suit === tableCard.suit);
+  if (targetIndex === -1) {
+    console.error("Target card for staging stack not found on table.");
+    return gameState;
+  }
+
   // Determine the correct stacking order: bigger card at the bottom, smaller on top.
   const orderedCards = rankValue(handCard.rank) > rankValue(tableCard.rank)
     ? [{ ...handCard, source: 'hand' }, { ...tableCard, source: 'table' }]
@@ -640,10 +646,10 @@ export const handleCreateStagingStack = (gameState, handCard, tableCard) => {
   const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, handCard);
   if (!newPlayerHands) return gameState;
 
-  const newTableCards = removeCardsFromTable(tableCards, [tableCard]);
-  newTableCards.push(newStack);
+  const finalTableCards = [...tableCards];
+  finalTableCards.splice(targetIndex, 1, newStack); // Replace the target card with the new stack
 
-  return updateGameState(gameState, { playerHands: newPlayerHands, tableCards: newTableCards });
+  return updateGameState(gameState, { playerHands: newPlayerHands, tableCards: finalTableCards });
 };
 
 /**
@@ -665,8 +671,16 @@ export const handleAddToStagingStack = (gameState, handCard, targetStack) => {
   const newStack = { ...targetStack, cards: [...targetStack.cards, { ...handCard, source: 'hand' }] };
 
   // 3. Update the table by replacing the old stack with the new one
-  const newTableCards = tableCards.filter(s => s.stackId !== targetStack.stackId);
-  newTableCards.push(newStack);
+  const stackIndex = tableCards.findIndex(s => s.stackId === targetStack.stackId);
+  const newTableCards = [...tableCards];
+  if (stackIndex !== -1) {
+    newTableCards[stackIndex] = newStack;
+  } else {
+    // Fallback if something went wrong
+    const filteredTable = tableCards.filter(s => s.stackId !== targetStack.stackId);
+    filteredTable.push(newStack);
+    newTableCards = filteredTable;
+  }
 
   // 4. Return the new state (turn does not end)
   return updateGameState(gameState, { playerHands: newPlayerHands, tableCards: newTableCards });
@@ -739,4 +753,32 @@ export const handleCancelStagingStack = (gameState, stackToCancel) => {
 
   // 5. Return the new state (turn does not end)
   return updateGameState(gameState, { playerHands, tableCards: newTableCards, playerCaptures });
+};
+
+/**
+ * Merges a temporary stack of table cards into the player's own existing build.
+ * This action does not end the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} stack - The temporary stack to merge.
+ * @param {object} targetBuild - The player's build to merge into.
+ * @returns {object} The updated game state.
+ */
+export const handleMergeIntoOwnBuild = (gameState, stack, targetBuild) => {
+  const { tableCards } = gameState;
+
+  // 1. Get the cards from the stack, stripping the 'source' property.
+  const cardsFromStack = stack.cards.map(({ source, ...card }) => card);
+
+  // 2. Combine the cards. The new cards go on top.
+  const newBuildCards = [...targetBuild.cards, ...cardsFromStack];
+
+  // 3. Create the new, larger build object, replacing the old one.
+  const newBuild = { ...targetBuild, cards: newBuildCards };
+
+  // 4. Update the table by removing the old items and adding the new merged build.
+  const newTableCards = removeCardsFromTable(tableCards, [targetBuild, stack]);
+  newTableCards.push(newBuild);
+
+  // 5. Return the new state, but DO NOT end the player's turn.
+  return updateGameState(gameState, { tableCards: newTableCards });
 };

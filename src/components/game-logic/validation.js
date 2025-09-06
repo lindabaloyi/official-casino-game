@@ -285,6 +285,37 @@ export const validateReinforceBuildWithStack = (stack, targetBuild) => {
 };
 
 /**
+ * Validates if a temporary stack (containing only table cards) can be merged into the player's own build.
+ * This action does not end the turn.
+ * @param {object} stack - The temporary stack to merge.
+ * @param {object} targetBuild - The player's own build to merge into.
+ * @param {number} currentPlayer - The index of the current player.
+ * @returns {object} Validation result with valid flag and message.
+ */
+export const validateMergeIntoOwnBuild = (stack, targetBuild, currentPlayer) => {
+  // Rule 1: Target build must be owned by the current player.
+  if (targetBuild.owner !== currentPlayer) {
+    return {
+      valid: false,
+      message: "You can only merge table cards into your own build."
+    };
+  }
+
+  // Rule 2: The stack must contain zero cards from the player's hand.
+  if (stack.cards.some(c => c.source === 'hand')) {
+    return { valid: false, message: "This action is for merging table cards only." };
+  }
+
+  // Rule 3: The cards in the stack must be partitionable into groups that sum to the target build's value.
+  const cardsForPartition = stack.cards.map(({ source, ...card }) => card);
+  if (!canPartitionIntoSums(cardsForPartition, targetBuild.value)) {
+    return { valid: false, message: `The cards in your stack cannot be grouped to match the build value of ${targetBuild.value}.` };
+  }
+
+  return { valid: true };
+};
+
+/**
  * Validates game state integrity.
  * @param {object} gameState - The current game state.
  * @returns {object} Validation result with valid flag and issues array.

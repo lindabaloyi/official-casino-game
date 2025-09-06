@@ -20,9 +20,10 @@ import {
   handleAddToStagingStack,
   handleDisbandStagingStack,
   handleCancelStagingStack,
+  handleMergeIntoOwnBuild,
 } from './game-logic/index.js';
 import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand, getCardId, calculateCardSum, canPartitionIntoSums } from './game-logic/index.js';
-import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild, validateReinforceBuildWithStack } from './game-logic/validation.js';
+import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild, validateReinforceBuildWithStack, validateMergeIntoOwnBuild } from './game-logic/validation.js';
 
 // Import notification system
 import { useNotifications } from './styles/NotificationSystem';
@@ -329,14 +330,32 @@ export const useGameActions = () => {
           if (!targetCard) { showError("Target card for stack not found."); return currentGameState; }
           if (getCardId(draggedCard) === getCardId(targetCard)) return currentGameState; // Prevent self-drop
 
+          // Find original index of the target card to preserve position
+          const targetIndex = tableCards.findIndex(c => getCardId(c) === getCardId(targetCard));
+
+          // Annotate cards with their source and sort them for consistent display
+          const annotatedTarget = { ...targetCard, source: 'table' };
+          const annotatedDragged = { ...draggedCard, source: draggedSource };
+
+          const orderedCards = rankValue(annotatedDragged.rank) > rankValue(annotatedTarget.rank)
+            ? [annotatedDragged, annotatedTarget]
+            : [annotatedTarget, annotatedDragged];
+
           const newStack = {
             stackId: `temp-${Date.now()}`,
             type: 'temporary_stack',
-            cards: [targetCard, draggedCard], // Base card first
+            cards: orderedCards,
             owner: currentPlayer,
           };
-          const finalTableCards = newTableCards.filter(c => getCardId(c) !== getCardId(targetCard));
-          finalTableCards.push(newStack);
+
+          // Replace the target card with the new stack in the array that already had the dragged card removed.
+          const finalTableCards = [...newTableCards];
+          const insertionIndex = finalTableCards.findIndex(c => getCardId(c) === getCardId(targetCard));
+          if (insertionIndex !== -1) {
+            finalTableCards.splice(insertionIndex, 1, newStack);
+          } else {
+            finalTableCards.push(newStack); // Fallback
+          }
           return { ...currentGameState, tableCards: finalTableCards, playerCaptures: newPlayerCaptures };
         }
         // A.2: Dropped on an existing temporary stack to add to it
@@ -345,9 +364,15 @@ export const useGameActions = () => {
           if (!targetStack) { showError("Target stack not found."); return currentGameState; }
           if (targetStack.owner !== currentPlayer) { showError("You cannot add to another player's temporary stack."); return currentGameState; }
 
+          const stackIndex = newTableCards.findIndex(s => s.stackId === targetStack.stackId);
           const newStack = { ...targetStack, cards: [...targetStack.cards, { ...draggedCard, source: draggedSource }] };
-          const finalTableCards = newTableCards.filter(c => c.stackId !== targetStack.stackId);
-          finalTableCards.push(newStack);
+          const finalTableCards = [...newTableCards];
+          if (stackIndex !== -1) {
+            finalTableCards[stackIndex] = newStack;
+          } else {
+            // Fallback
+            finalTableCards.push(newStack);
+          }
           return { ...currentGameState, tableCards: finalTableCards, playerCaptures: newPlayerCaptures };
         }
         showError("Invalid move: Cards can only be stacked on loose cards or other temporary stacks.");
@@ -416,25 +441,20 @@ export const useGameActions = () => {
           return currentGameState;
         }
 
-        // --- NEW: CONTEXTUAL STAGING LOGIC ---
-        // Check if the player is trying to stage cards to add to an existing build.
-        const playerOwnsBuild = tableCards.find(c => c.type === 'build' && c.owner === currentPlayer);
-
-        if (playerOwnsBuild && draggedItem.source === 'hand') {
-          const { card: draggedCard } = draggedItem;
-          const combinedValue = rankValue(draggedCard.rank) + rankValue(targetCard.rank);
-
-          if (combinedValue === playerOwnsBuild.value) {
-            // The player is implicitly creating a staging stack to match their build.
-            // We execute this directly without showing a modal.
-            return handleCreateStagingStack(currentGameState, draggedCard, targetCard);
-          }
-        }
-        // --- END: CONTEXTUAL STAGING LOGIC ---
-
         const possibleActions = generatePossibleActions(draggedItem, targetCard, playerHand, tableCards, playerCaptures, currentPlayer);
 
         if (possibleActions.length === 0) {
+          // --- NEW: CONTEXTUAL STAGING LOGIC ---
+          // If no direct actions are possible, check if we should create a staging stack.
+          const playerOwnsBuild = tableCards.find(c => c.type === 'build' && c.owner === currentPlayer);
+          if (playerOwnsBuild && draggedItem.source === 'hand') {
+            // The player has a build and is trying to combine their hand card with a table card.
+            // Assume they are starting a staging stack.
+            const { card: draggedCard } = draggedItem;
+            return handleCreateStagingStack(currentGameState, draggedCard, targetCard);
+          }
+          // --- END NEW LOGIC ---
+
           showError("No valid moves with this card combination.");
           return currentGameState;
         } else if (possibleActions.length === 1) {
@@ -463,13 +483,25 @@ export const useGameActions = () => {
         // --- Handle dropping a temporary stack onto a build ---
         if (draggedItem.source === 'temp_stack') {
           const { stack: stagingStack } = draggedItem;
-          const validation = validateReinforceBuildWithStack(stagingStack, buildToDropOn);
-          if (!validation.valid) {
-            showError(validation.message);
-            // The move is invalid, so disband the stack and end the turn.
-            return handleDisbandStagingStack(currentGameState, stagingStack);
+          const handCardsInStack = stagingStack.cards.filter(c => c.source === 'hand');
+
+          if (handCardsInStack.length > 0) {
+            // This is a "Reinforce" action that uses a hand card and ends the turn.
+            const validation = validateReinforceBuildWithStack(stagingStack, buildToDropOn);
+            if (!validation.valid) {
+              showError(validation.message);
+              return handleDisbandStagingStack(currentGameState, stagingStack);
+            }
+            return handleReinforceBuildWithStack(currentGameState, stagingStack, buildToDropOn);
+          } else {
+            // This is a "Merge" action with only table cards that does NOT end the turn.
+            const validation = validateMergeIntoOwnBuild(stagingStack, buildToDropOn, currentPlayer);
+            if (!validation.valid) {
+              showError(validation.message);
+              return currentGameState; // Snap back on invalid merge
+            }
+            return handleMergeIntoOwnBuild(currentGameState, stagingStack, buildToDropOn);
           }
-          return handleReinforceBuildWithStack(currentGameState, stagingStack, buildToDropOn);
         }
 
         const { card: draggedCard } = draggedItem;

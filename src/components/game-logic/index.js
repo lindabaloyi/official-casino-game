@@ -41,7 +41,8 @@ export {
   validateTrail,
   validateAddToBuild,
   validateAddToOpponentBuild,
-  validateTemporaryStackBuild
+  validateTemporaryStackBuild,
+  validateMergeIntoOwnBuild
 } from './validation.js';
 
 
@@ -64,5 +65,6 @@ export {
   handleReinforceBuildWithStack,
   handleAddToStagingStack,
   handleDisbandStagingStack,
-  handleCancelStagingStack
+  handleCancelStagingStack,
+  handleMergeIntoOwnBuild
 } from './game-actions.js';

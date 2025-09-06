@@ -78,11 +78,6 @@ const DraggableLooseCard = ({ card, onDropOnCard, currentPlayer }) => {
 };
 
 const TableCards = ({ cards, onDropOnCard, currentPlayer, onCancelStack }) => {
-  // Separate loose cards from builds to render them differently.
-  const looseCards = React.useMemo(() => cards.filter(c => !c.type), [cards]);
-  const builds = React.useMemo(() => cards.filter(c => c.type === 'build'), [cards]);
-  const temporaryStacks = React.useMemo(() => cards.filter(c => c.type === 'temporary_stack'), [cards]);
-
   const memoizedOnDropOnCard = useCallback(onDropOnCard, [onDropOnCard]);
 
   return (
@@ -90,18 +85,16 @@ const TableCards = ({ cards, onDropOnCard, currentPlayer, onCancelStack }) => {
       <h3>Table Cards</h3>
       {/* The container now has a minimum height to prevent layout collapse when empty */}
       <div className="cards-container" style={{ minHeight: '150px' }}>
-        {cards.length > 0 && (
-          <>
-            {/* Render each loose card as its own individual stack */}
-            {looseCards.map((card) => <DraggableLooseCard key={`draggable-loose-${card.rank}-${card.suit}`} card={card} onDropOnCard={memoizedOnDropOnCard} currentPlayer={currentPlayer} />)}
-            {/* Render each build as a stack inside its own container */}
-            {builds.map((build) => (
-              <BuildStack key={build.buildId} build={build} onDropStack={memoizedOnDropOnCard} />
-            ))}
-            {/* Render each temporary stack for capture */}
-            {temporaryStacks.map((stack) => <DraggableTempStack key={stack.stackId} stack={stack} onDropOnCard={memoizedOnDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} />)}
-          </>
-        )}
+        {cards.map((item, index) => {
+          if (item.type === 'build') {
+            return <BuildStack key={item.buildId || index} build={item} onDropStack={memoizedOnDropOnCard} />;
+          }
+          if (item.type === 'temporary_stack') {
+            return <DraggableTempStack key={item.stackId || index} stack={item} onDropOnCard={memoizedOnDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} />;
+          }
+          // Default to rendering a loose card
+          return <DraggableLooseCard key={`loose-${item.rank}-${item.suit}` || index} card={item} onDropOnCard={memoizedOnDropOnCard} currentPlayer={currentPlayer} />;
+        })}
       </div>
     </div>
   );
