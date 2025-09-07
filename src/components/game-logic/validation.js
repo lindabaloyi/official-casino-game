@@ -167,7 +167,7 @@ export const validateAddToOpponentBuild = (build, playerCard, playerHand, tableC
   }
 
   // Rule 3: Build must be simple and extendable
-  if (!build.isExtendable || build.cards.length >= 4) {
+  if (!build.isExtendable || build.cards.length >= 5) {
     return { valid: false, message: "This build cannot be extended." };
   }
 
@@ -218,7 +218,7 @@ export const validateAddToOwnBuild = (build, playerCard, playerHand) => {
   }
 
   // Rule 2c: Build cannot become too large
-  if (build.cards.length + 1 >= 5) {
+  if (build.cards.length >= 5) {
     return { valid: false, message: "This build cannot be extended further." };
   }
 

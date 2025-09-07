@@ -2,6 +2,8 @@
 
 This guide provides a comprehensive overview of the Casino card game's architecture, components, and game logic. It is intended to help developers understand the codebase and contribute to the project consistently.
 
+> **Note:** This project is undergoing a significant refactoring to improve modularity, performance, and user experience. This guide reflects the **target architecture** that all new development should align with.
+
 ## 1. Game Overview
 
 **Game:** Casino
@@ -43,6 +45,7 @@ A player can create a build in several ways:
 
 #### Modifying Existing Builds
 A player can add cards to any build on the table (their own or an opponent's) to "reinforce" it. This is a powerful strategic move that makes the build larger and transfers its ownership. This is done using a flexible, on-the-fly "Staging Stack".
+A build can be extended until it contains a maximum of 5 cards.
 
 *   **Creating and Growing a Staging Stack:**
     *   **Context is Key:** If a player already owns a build, the game enters a "staging mode". Any combination of cards that is not an immediate capture will automatically create or add to a temporary Staging Stack instead of showing an error.
@@ -77,13 +80,24 @@ In a unique strategic twist, a player can use the top card from their opponent's
 *   **How it works:** A player can drag the top card from the opponent's capture pile and combine it with cards from their hand or the table to perform a **Build** or **Capture**.
 *   **Example (Temporal Build for Capture):** A player has a `9` in hand. The opponent's capture pile shows a `6`. The table has a `3`. The player can drag the opponent's `6` and the table's `3` together, then use their `9` to capture this temporary combination. The `6` is removed from the opponent's pile and added to the current player's capture.
 
-## 3. Core Game Logic (`src/src/components/game-logic.js`)
+## 3. Core Game Logic (`src/components/game-logic/`)
 
-This file is the heart of the game, containing all the rules and state management functions.
+The game's logic has been modularized from a single monolithic file into a directory of focused modules. This separation of concerns makes the codebase easier to understand, maintain, and test. The core logic now resides in `src/components/game-logic/`.
 
 ### Key Functions:
 
-The logic is organized into several pure functions that manage the game state, grouped by purpose:
+The logic is organized into pure functions across several files:
+*   **`index.js`**: Exports all public functions from the other modules, providing a single entry point for the game logic.
+*   **`game-state.js`**: Handles game initialization and high-level state transitions like starting new rounds or ending the game. Contains `initializeGame()`, `startNextRound()`, etc.
+*   **`card-operations.js`**: Contains pure functions for manipulating card collections, such as adding/removing cards from hands, the table, or capture piles.
+*   **`validation.js`**: Provides functions to validate player moves, such as `findValidCaptures()`, `findValidBuilds()`, and `validateBuild()`.
+*   **`algorithms.js`**: Houses complex algorithms, including the optimized dynamic programming version of `findCombinationsDP` for finding card combinations that sum to a target value.
+*   **`scoring.js`**: Contains all logic related to calculating scores at the end of a round or the game.
+
+All functions that orchestrate player actions are designed to be pure, receiving the current game state and player input, and returning a new game state object.
+
+#### Example Player Actions:
+
 *   **Setup & Game Flow:** `initializeGame()`, `startNextRound()`, `handleSweep()`, `isRoundOver()`, `isGameOver()`, `endGame()`, and `calculateScores()`.
 *   **Player Actions:**
     *   `handleTrail()`: Plays a card from hand to the table without capturing or building.
@@ -154,27 +168,48 @@ The UI is built with React and organized into several components.
 
 ### UI Components
 
-The UI is managed by `App.js` and the main `GameBoard.js` component. Key display components include `PlayerHand.js`, `TableCards.js`, and `CapturedCards.js`.
-Interactive elements are handled by `DraggableCard.js` and `CardStack.js` (for builds and other stacks). The on-table stacking mechanic, managed within `GameBoard.js`, serves as the primary interface for all complex moves, removing the need for separate modals or staging zones for most actions.
+The UI is managed by `App.js` and the main `GameBoard.js` component. The component structure follows the modular plan outlined in the refactoring guide:
+
+```
+src/components/ui/
+├── GameBoard.js
+├── PlayerHand.js
+├── TableCards.js
+├── CapturedCards.js
+├── ComboZone.js
+└── notifications/
+    ├── NotificationSystem.js
+    └── Toast.js
+```
+
+Interactive elements are handled by `DraggableCard` and `CardStack` components. The on-table stacking mechanic, managed within `GameBoard.js`, serves as the primary interface for all complex moves.
 
 ### Custom Hooks:
 
-* **`useGameState.js`**: A hook that encapsulates the game's state and provides action dispatchers (`trailCard`, `build`, `capture`, etc.).
-* **`useGameActions.js`**: A more specialized hook used by `GameBoard.js` to handle complex user interactions, including managing the temporary state of card stacks on the table before a play is committed. It integrates with `game-logic.js` to validate and update the game state.
+*   **`useGameState.js`**: Encapsulates the core `gameState` object and provides memoized selectors to derive state for UI components.
+*   **`useGameActions.js`**: A specialized hook used by `GameBoard.js` to handle complex user interactions. It orchestrates calls to the pure functions in `game-logic` and manages temporary UI state, like the staging of card stacks.
+*   **`useNotifications.js`**: A hook that provides functions (`showError`, `showSuccess`, etc.) to display non-blocking toast notifications for user feedback, replacing browser `alert()`s.
 
 ## 5. Development Guidelines
 
 To ensure consistency and maintainability, please follow these guidelines when adding new features or modifying existing code.
 
 ### State Management:
-
-*   All state updates must be **immutable**.
+*   All state updates must be **immutable**. Use spread syntax (`...`) for objects and arrays instead of direct mutation. Avoid expensive deep cloning like `JSON.parse(JSON.stringify())`.
 *   The `gameState` object is the **single source of truth**.
 
 ### Component Design:
-
 *   Use functional components, hooks, and CSS modules.
 *   Prioritize creating reusable components like `Card.js`.
+*   Ensure components are accessible by providing ARIA labels and keyboard navigation support (`onKeyDown`).
+
+### Error Handling & User Feedback:
+*   **Never use `alert()`**. All user feedback should be provided through the `useNotifications` hook.
+*   Game logic functions should not produce side effects. For invalid moves, they should return the original, unmodified game state. The calling function in `useGameActions` is responsible for triggering the notification.
+
+### Performance:
+*   Be mindful of algorithmic complexity. Use efficient solutions, such as the dynamic programming approach for `findCombinationsDP`, for operations that may run frequently.
+*   Use `React.memo` to prevent unnecessary re-renders of components that receive complex props.
 
 ### Game Logic:
 
@@ -182,12 +217,17 @@ To ensure consistency and maintainability, please follow these guidelines when a
 *   Do not implement game logic directly in React components.
 *   Use the provided `logGameState` function for debugging.
 
+### Testing:
+*   **Unit Tests:** All new game logic functions in `src/components/game-logic/` must have corresponding unit tests.
+*   **Integration Tests:** Create integration tests for complete game flows to validate UI state synchronization and user interactions.
+
 ### Adding New Features:
 
-1. **Update Game Logic:** Start by adding or modifying the necessary functions in `game-logic.js`.
-2. **Update Hooks:** If needed, update the `useGameState` or `useGameActions` hooks to expose the new functionality to the UI.
-3. **Update Components:** Modify the relevant React components to incorporate the new feature.
-4. **Write Tests:** Add unit tests for the new game logic and integration tests for the new UI components.
+1.  **Update Game Logic:** Start by adding or modifying the necessary pure functions in the appropriate module within `src/components/game-logic/`.
+2.  **Write Unit Tests:** Add unit tests for the new logic to ensure correctness.
+3.  **Update Hooks:** If needed, update the `useGameActions` hook to orchestrate the new logic.
+4.  **Update Components:** Modify the relevant React components in `src/components/ui/` to incorporate the new feature.
+5.  **Write Integration Tests:** Add tests to verify the feature works end-to-end.
 
 By following these guidelines, we can ensure that the Casino card game project remains well-structured, easy to understand, and maintainable.
 

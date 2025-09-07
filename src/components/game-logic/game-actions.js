@@ -345,7 +345,7 @@ export const handleAddToOpponentBuild = (gameState, draggedItem, buildToAddTo) =
     cards: sortedCards,
     value: newBuildValue,
     owner: currentPlayer, // Ownership is transferred to the current player
-    isExtendable: false, // Extended builds cannot be extended further
+    isExtendable: sortedCards.length < 5, // A build is extendable until it has 5 cards.
   };
 
   let newPlayerHands = playerHands;
@@ -419,6 +419,45 @@ export const handleAddToOwnBuild = (gameState, draggedItem, buildToAddTo) => {
 export const handleCapture = (gameState, draggedItem, selectedTableCards, opponentCard = null) => {
   const { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
   const { card: selectedCard, source } = draggedItem;
+
+  // --- Contextual check for "Implicit Add to Build" ---
+  // If a player has a build, and makes a combination that matches their build's value,
+  // it should be treated as adding to the build, not a capture.
+  const playerOwnBuild = tableCards.find(item => item.type === 'build' && item.owner === currentPlayer);
+  if (playerOwnBuild && source === 'hand' && !opponentCard) {
+    const potentialStackCards = [selectedCard, ...selectedTableCards.flatMap(item => item.cards || [item])];
+
+    // Check if the combined cards can be partitioned into sums of the build's value.
+    // e.g., hand(4) + table(4) for a build of 8.
+    if (canPartitionIntoSums(potentialStackCards, playerOwnBuild.value)) {
+      // This is an "add to build" action, not a capture.
+      const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, selectedCard);
+      if (!newPlayerHands) return gameState;
+
+      const allNewBuildCards = [...playerOwnBuild.cards, ...potentialStackCards];
+
+      const newBuild = {
+        buildId: generateBuildId(),
+        type: 'build',
+        cards: allNewBuildCards,
+        value: playerOwnBuild.value,
+        owner: currentPlayer,
+        isExtendable: false, // Reinforced builds cannot be extended further
+      };
+
+      const itemsToRemoveFromTable = [playerOwnBuild, ...selectedTableCards];
+      const finalTableCards = removeCardsFromTable(tableCards, itemsToRemoveFromTable);
+      finalTableCards.push(newBuild);
+
+      const newState = updateGameState(gameState, {
+        playerHands: newPlayerHands,
+        tableCards: finalTableCards,
+      });
+
+      logGameState(`Player ${currentPlayer + 1} reinforced their build of ${playerOwnBuild.value}`, nextPlayer(newState));
+      return nextPlayer(newState);
+    }
+  }
 
   let newPlayerHands = playerHands;
   let newTableCards = tableCards;
