@@ -9,6 +9,7 @@ const StartMenu = ({ onPlay }) => {
         <div className="start-menu-actions">
           <button onClick={() => onPlay('human')}>Play vs Human</button>
           <button onClick={() => onPlay('cpu')}>Play vs CPU</button>
+          <button onClick={() => onPlay('online')}>Play Online</button>
         </div>
       </div>
     </div>

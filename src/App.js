@@ -3,23 +3,33 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import GameBoard from './components/GameBoard';
 import StartMenu from './components/StartMenu';
+import Lobby from './components/Lobby';
 import { NotificationProvider } from './components/styles/NotificationSystem';
 
 import './App.css';
 
 function App() {
   const [key, setKey] = useState(0);
-  const [isGameStarted, setIsGameStarted] = useState(false);
-  const [gameMode, setGameMode] = useState(null); // 'human' or 'cpu'
+  const [screen, setScreen] = useState('start'); // 'start', 'lobby', 'game'
+  const [gameMode, setGameMode] = useState(null); // 'human', 'cpu', 'online'
 
   const handlePlay = (mode) => {
-    setGameMode(mode);
-    setIsGameStarted(true);
+    if (mode === 'online') {
+      setScreen('lobby');
+    } else {
+      setGameMode(mode);
+      setScreen('game');
+    }
+  };
+
+  const handleInviteAccepted = () => {
+    setGameMode('online');
+    setScreen('game');
   };
 
   const handleRestart = () => {
     setKey((prev) => prev + 1);
-    setIsGameStarted(false);
+    setScreen('start');
     setGameMode(null);
   };
 
@@ -27,7 +37,8 @@ function App() {
     <div className="App">
       <DndProvider backend={HTML5Backend}>
         <NotificationProvider>
-          {!isGameStarted && <StartMenu onPlay={handlePlay} />}
+          {screen === 'start' && <StartMenu onPlay={handlePlay} />}
+          {screen === 'lobby' && <Lobby onInvite={() => { /* Placeholder */ }} />}
           <GameBoard key={key} onRestart={handleRestart} gameMode={gameMode} />
         </NotificationProvider>
       </DndProvider>
