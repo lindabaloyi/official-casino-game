@@ -1,0 +1,59 @@
+/* Start Menu Styling */
+
+.start-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(5px);
+}
+
+.start-menu-section {
+  background: var(--secondary-bg);
+  padding: 2rem 4rem;
+  border-radius: var(--border-radius);
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.start-menu-section h1 {
+  margin: 0 0 2rem 0;
+  color: var(--accent);
+  font-size: 3.5rem;
+  font-family: var(--font-secondary);
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+.start-menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.start-menu-actions button {
+  padding: 1rem 2rem;
+  background: var(--accent);
+  color: var(--primary-bg);
+  border: none;
+  border-radius: 6px;
+  font-size: 1.2rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.start-menu-actions button:hover {
+  background: #ffd700;
+  color: #000;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.3);
+}
