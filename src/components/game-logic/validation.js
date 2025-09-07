@@ -124,33 +124,6 @@ export const validateTrail = (tableCards, card, currentPlayer, round) => {
   return { valid: true };
 };
 
-/**
- * Validates if a card can be added to an existing build.
- * @param {object} buildToAddTo - The build to add to.
- * @param {object} playerCard - The card from hand.
- * @param {object} tableCard - The loose card to add.
- * @param {Array} playerHand - The current player's hand.
- * @returns {object} Validation result with valid flag and message.
- */
-export const validateAddToBuild = (buildToAddTo, playerCard, tableCard, playerHand) => {
-  const newValue = buildToAddTo.value + rankValue(playerCard.rank) + rankValue(tableCard.rank);
-
-  // Check if player can capture the new build value
-  const canCapture = playerHand.some(c =>
-    rankValue(c.rank) === newValue &&
-    (c.rank !== playerCard.rank || c.suit !== playerCard.suit)
-  );
-
-  if (!canCapture) {
-    return {
-      valid: false,
-      message: `Cannot add to build. You need a card with value ${newValue} to capture it later.`
-    };
-  }
-
-  return { valid: true };
-};
-
 export const validateAddToOpponentBuild = (build, playerCard, playerHand, tableCards, currentPlayer) => {
   // Rule 1: Cannot add to your own build with this action
   if (build.owner === currentPlayer) {
@@ -343,39 +316,42 @@ export const validateExtendToMerge = (ownBuild, opponentBuild, handCard) => {
 };
 
 /**
- * Validates if a temporary stack can be finalized into a new, permanent build.
+ * Finds all possible valid build values that can be created from a temporary staging stack.
  * @param {object} stack - The temporary stack to be finalized.
  * @param {Array} playerHand - The hand of the current player.
  * @param {Array} tableCards - The cards on the table.
  * @param {number} currentPlayer - The index of the current player.
- * @returns {object} Validation result with valid flag and message.
+ * @returns {Array<number>} An array of numbers representing the valid build values.
  */
-export const validateFinalizeStagingStack = (stack, playerHand, tableCards, currentPlayer) => {
-  // Rule 1: Player cannot already have a build
+export const findPossibleBuildsFromStack = (stack, playerHand, tableCards, currentPlayer) => {
+  // Rule 1: Player cannot already have a build.
   const playerAlreadyHasBuild = tableCards.some(
     item => item.type === 'build' && item.owner === currentPlayer
   );
   if (playerAlreadyHasBuild) {
-    return { valid: false, message: "You already have a build. You can only add to it." };
+    return []; // Cannot create a new build if one is already owned.
   }
 
   // Rule 2: The stack must contain exactly one card from the player's hand.
   const handCardsInStack = stack.cards.filter(c => c.source === 'hand');
   if (handCardsInStack.length !== 1) {
-    return { valid: false, message: "A new build must be made with one card from your hand." };
+    return []; // Invalid stack setup
   }
-
-  // Rule 3: Player must have a card in hand to capture the new build.
-  const buildValue = calculateCardSum(stack.cards.map(({ source, ...card }) => card));
   const handCardUsed = handCardsInStack[0];
-  const remainingHand = playerHand.filter(c => c.rank !== handCardUsed.rank || c.suit !== handCardUsed.suit);
 
-  const canCapture = remainingHand.some(c => rankValue(c.rank) === buildValue);
-  if (!canCapture) {
-    return { valid: false, message: `You must have a ${buildValue} in your hand to create this build.` };
+  // Rule 3: The player must have cards in their remaining hand to capture a potential build.
+  const remainingHand = playerHand.filter(c => c.rank !== handCardUsed.rank || c.suit !== handCardUsed.suit);
+  if (remainingHand.length === 0) {
+    return [];
   }
 
-  return { valid: true, buildValue };
+  // Get the unique values from the remaining hand cards. These are our potential build values.
+  const potentialBuildValues = [...new Set(remainingHand.map(c => rankValue(c.rank)))];
+
+  const cardsToBuildWith = stack.cards.map(({ source, ...card }) => card);
+
+  // Rule 4: For each potential value, check if the stack can be partitioned into sums of that value.
+  return potentialBuildValues.filter(value => canPartitionIntoSums(cardsToBuildWith, value));
 };
 
 /**

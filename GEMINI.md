@@ -13,74 +13,83 @@ This guide provides a comprehensive overview of the Casino card game's architect
 
 ### Scoring Rules:
 
-*   **Cards:** 2 points for capturing more than 20 cards (21+). If both players have 20 cards, each gets 1 point.
-*   **Spades:** 2 points for capturing 6 or more spades.
+*   **Cards:** 2 points for capturing the most cards . 1 point each are awarded for a tie.
+*   **Spades:** 2 points for capturing the most spades. 2 points each are awarded for a tie.
 *   **Big Casino (10 of Diamonds):** 2 points
 *   **Little Casino (2 of Spades):** 1 point
 *   **Aces:** 1 point for each Ace captured.
 
 ## 2. Advanced Gameplay Mechanics
 
-All complex player actions, such as creating builds or capturing multiple cards, are performed directly on the game table through a drag-and-drop stacking mechanic. The game logic infers the player's intent (e.g., Build, Capture, Add to Build) based on the cards being stacked and the context of the game. If a move is invalid, the cards automatically return to their original positions.
+All player actions are performed directly on the game table through a flexible drag-and-drop system. This system is unified under a **"Staging First"** model: players assemble their move in a temporary **Staging Stack** and then confirm it. This gives players full control and makes the game flow more intuitive.
 
-### 2.1 Core Interaction: Stacking
+### 2.1 The Staging Stack
 
-*   **Initiating an Action:** A player initiates an action by dragging a card from their hand onto a card on the table, or by dragging table cards onto each other. This creates a temporary stack.
-*   **Intent Inference:** The game analyzes the final stack to determine the action:
-    *   **Capture:** If the sum of table cards in the stack equals the value of the player's hand card dropped on top, it's a capture.
-    *   **Build:** If the values don't match for a capture, the game checks if a valid build can be formed. This requires the player to hold a "capture card" in their hand matching the build's value.
-*   **Invalid Moves:** If no valid action can be inferred, the stack disbands.
+Instead of actions happening instantly, almost all moves are first assembled in a `Staging Stack`. This allows for complex, multi-card plays without the turn ending prematurely.
+
+*   **Creating a Stack:** A player can start a `Staging Stack` by dragging cards onto each other from various sources:
+    *   A card from their hand onto a loose table card.
+    *   A loose table card onto another loose table card.
+    *   A card from the opponent's capture pile onto a loose card or an existing `Staging Stack`.
+*   **Real-time Validation:** If a player already owns a build, the game provides real-time feedback. If they try to add a card to the stack that makes it an invalid combination for their build, the move is instantly rejected, and the card snaps back to its origin.
+*   **Confirm/Cancel:** While a `Staging Stack` is active, the player will see **Confirm (✓)** and **Cancel (X)** buttons.
+    *   **Confirm:** Finalizes the move. The game analyzes the stack for all valid outcomes (captures or builds).
+        *   If there is only **one** valid move, it is executed automatically.
+        *   If there are **multiple** valid moves, a modal appears for the player to choose.
+        *   If there are **zero** valid moves, the stack is disbanded, all cards are returned to their original sources (hand, table, or opponent's pile), and the turn ends as a penalty.
+    *   **Cancel:** Aborts the move. The stack disbands, and all cards return to their original positions with no penalty. The player's turn continues.
 
 ### 2.2 Building
 
-Building allows players to combine cards on the table into a single unit with a specific value, which can be captured later.
+Building allows players to combine cards on the table into a single unit with a specific value, which can be captured later. **A player can only own one build at a time.**
 
 #### Creating a New Build
-A player can create a build in several ways:
-1.  **Sum Build:** Drag a card from hand onto a table card. If the player holds a card matching the sum (e.g., drag a `2` from hand onto a `5` on the table to build a `7`, while holding a `7` in hand), a build of `7` is created.
-2.  **Stacking Build:** Drag multiple loose table cards into a temporary stack, then drop a hand card on top. The game will attempt to form a build from the combination.
-3.  **Base Build:** A more complex build where a player uses a hand card to bind multiple combinations of table cards that each sum to the hand card's value. For example, with a `9` in hand, a player could group a `[6, 3]` and a `[5, 4]` on the table into a single "base build" of 9. This build cannot be extended further.
-4.  **Auto-Grouping Build:** If a player creates a build that matches the value of other loose cards or builds already on the table, the game will automatically group them. The existing matching items are placed at the bottom of the stack, and the cards used for the new build action are placed on top. For example, if a player uses their `6` and a table `2` to build an `8`, and there is already a loose `8` on the table, the game will create one large build of `8` with the cards ordered `[8, 6, 2]`. This consolidated build cannot be extended further.
-5.  **Automatic Steal Build:** If a player creates a build whose value matches the top card of the opponent's capture pile, that card is automatically stolen from the opponent and added to the base of the new build. For example, if a player builds a `5` and the opponent's top captured card is a `5`, the opponent's `5` is added to the new build.
+A player creates a new build using the `Staging Stack`.
+1.  **Assemble:** Combine one card from your hand with one or more loose table cards in a `Staging Stack`.
+2.  **Confirm:** Click the **Confirm (✓)** button.
+3.  **Validate:** The game runs two checks: you must not already own a permanent build, and you must have a card in your remaining hand that can capture the new build's value.
+4.  **Ambiguous Moves:** If the stack could form multiple valid builds (e.g., a `[5, 3, 2]` stack could be a build of `5` or `10`), a modal will appear, prompting you to choose your intended action.
 
 #### Modifying Existing Builds
-A player can add cards to any build on the table (their own or an opponent's) to "reinforce" it. This is a powerful strategic move that makes the build larger and transfers its ownership. This is done using a flexible, on-the-fly "Staging Stack".
-A build can be extended until it contains a maximum of 5 cards.
+A player can add cards to any build on the table (their own or an opponent's). A build can be extended until it contains a maximum of 5 cards.
 
-*   **Creating and Growing a Staging Stack:**
-    *   **Context is Key:** If a player already owns a build, the game enters a "staging mode". Any combination of cards that is not an immediate capture will automatically create or add to a temporary Staging Stack instead of showing an error.
-    *   **How to Stage:** A player can create or add to a stack by dragging cards from multiple sources onto each other:
-        *   A card from their hand onto a loose table card.
-        *   A loose table card onto another loose table card.
-        *   A card from the opponent's capture pile onto a loose card or an existing Staging Stack.
-    *   The player's turn does not end while they are building their Staging Stack.
+*   **Adding to Your Own Build:** Assemble a `Staging Stack` of cards that reinforces your build (e.g., a `[9, 1]` stack to add to your build of 10). Drag the stack onto your build. The cards will merge, and your turn continues.
+*   **Stealing an Opponent's Build:**
+    *   **Simple Steal:** Drag a card from your hand onto an opponent's build. If the move is unambiguous and valid (e.g., dropping a `2` on their build of `7` while holding a `9`), you steal the build automatically. This ends your turn.
+    *   **Complex Steal:** Assemble a `Staging Stack` and drop it on an opponent's build. The stack must contain exactly one hand card and be partitionable by the build's value. This creates a larger, reinforced build that you now own. This ends your turn.
 
-*   **Committing the Action:**
-    1.  Once the Staging Stack is assembled, the player drags the entire stack and drops it onto a target build.
-    2.  The game then validates the move.
-
-*   **Validation Rules:**
-    *   **Card Sources:** The final Staging Stack must contain exactly one card that originated from the player's hand.
-    *   **Value Partitioning:** The cards in the Staging Stack must be perfectly partitionable into groups that each sum to the target build's value. For example, adding a stack of `[9, 1, 8, 2]` to a build of `10` is valid because it finds the combos `(9+1)` and `(8+2)`.
-
-*   **Outcome:** The move creates a single, larger build. This new build is owned by the current player and cannot be extended further.
-*   **Invalid Attempts:** If a player attempts to reinforce a build with a Staging Stack that fails validation, the Staging Stack will automatically disband. All cards within it (including the one from the player's hand) will be returned to the table as loose cards, and the player's turn will end.
+#### The Auto-Grouping Exception
+This is the only automatic action in the game.
+*   **Trigger:** When a player successfully creates a **new, permanent build**.
+*   **Action:** The game instantly scans the table for any other loose cards or builds that match the new build's value.
+*   **Result:** All matching items are swept up and added to the *bottom* of the newly created build, creating a single, consolidated build and cleaning up the table.
 
 ### 2.3 Capturing
 
-Capturing is the primary way to score points. A player uses a card from their hand to take matching cards or builds from the table.
+Capturing is the primary way to score points. All captures are initiated via the `Staging Stack` mechanic. The order in which cards are added to the stack is the order they will appear in the capture pile.
 
-*   **Simple Capture:** Use a hand card to capture one or more table cards/builds of the same value (e.g., use a `9` to capture a `9` and a build of `9`).
-*   **Multi-Card Capture:** Stack multiple table cards that sum to the value of a hand card, then drop the hand card on top to capture the stack (e.g., stack a `4` and a `3`, then drop a `7` from hand to capture).
+*   **Staging a Capture:** To capture, you create a `Staging Stack` that includes one card from your hand and the cards/builds from the table you wish to capture.
+*   **Example - Sum Capture:** To use a hand `7` to capture a `4` and a `3` on the table:
+    1.  Drag the hand `7` onto the table `4`. This creates a `Staging Stack`.
+    2.  Drag the table `3` onto the `Staging Stack`.
+    3.  Click the **Confirm (✓)** button. The game validates that the table cards (`4+3`) sum to the hand card (`7`) and executes the capture.
 
-### 2.4 Special Mechanic: Using Opponent's Captured Cards
+### 2.4 Using Opponent's Captured Cards
 
-In a unique strategic twist, a player can use the top card from their opponent's capture pile as if it were a loose card on the table for one of their actions.
+A player can use the top card from their opponent's capture pile as if it were a loose card on the table. This must be done explicitly.
 
-*   **How it works:** A player can drag the top card from the opponent's capture pile and combine it with cards from their hand or the table to perform a **Build** or **Capture**.
-*   **Example (Temporal Build for Capture):** A player has a `9` in hand. The opponent's capture pile shows a `6`. The table has a `3`. The player can drag the opponent's `6` and the table's `3` together, then use their `9` to capture this temporary combination. The `6` is removed from the opponent's pile and added to the current player's capture.
+*   **How it works:** A player must manually drag the top card from the opponent's capture pile and add it to their `Staging Stack` to include it in a build or capture. The game will not do this automatically.
 
 ## 3. Core Game Logic (`src/components/game-logic/`)
+### 2.5 Trailing
+
+Trailing is playing a card from your hand directly to the table without capturing or building.
+
+*   **Round 1:** Trailing is an instant action. You cannot trail a card if a card of the same rank is on the table, or if you own a build.
+*   **Round 2:** To provide more flexibility, trailing a card now initiates a `Staging Stack`.
+    1.  Drop a card from your hand onto the empty table area. This creates a single-card `Staging Stack`.
+    2.  You can then either add more cards to it to form a combo, or click **Confirm (✓)** to finalize the trail and end your turn.
+    3.  Clicking **Cancel (X)** will return the card to your hand.
 
 The game's logic has been modularized from a single monolithic file into a directory of focused modules. This separation of concerns makes the codebase easier to understand, maintain, and test. The core logic now resides in `src/components/game-logic/`.
 
@@ -107,7 +116,6 @@ All functions that orchestrate player actions are designed to be pure, receiving
     *   `handleBaseBuild()`: Creates a complex, multi-combination build.
     *   `handleAddToOwnBuild()`: Adds a card to a player's own existing build (increasing or reinforcing).
     *   `handleAddToOpponentBuild()`: Adds a card to an opponent's build, "stealing" it.
-    *   `handleTemporalBuild()`: A helper for using an opponent's captured card in a play.
 *   **Validation & Helpers:** A suite of functions like `findValidCaptures()`, `findValidBuilds()`, and `validateBuild()` determine possible moves and ensure rules are followed.
 
 ### Game State Object:

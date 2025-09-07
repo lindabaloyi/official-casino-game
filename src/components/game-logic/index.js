@@ -39,10 +39,16 @@ export {
 export {
   validateBuild,
   validateTrail,
-  validateAddToBuild,
   validateAddToOpponentBuild,
   validateTemporaryStackBuild,
-  validateMergeIntoOwnBuild
+  validateMergeIntoOwnBuild,
+  findPossibleBuildsFromStack,
+  validateComplexCapture,
+  validateAddToOwnBuild,
+  validateReinforceBuildWithStack,
+  validateExtendToMerge,
+  validateReinforceOpponentBuildWithStack,
+  validateGameState
 } from './validation.js';
 
 
@@ -54,8 +60,6 @@ export {
   handleBaseBuild,
   handleAddToOwnBuild,
   handleCreateBuildFromStack,
-  handleAddToBuild,
-  handleTemporalBuild,
   handleAddToOpponentBuild,
   startNextRound,
   handleSweep,
@@ -70,5 +74,8 @@ export {
   handleStageOpponentCard,
   handleExtendToMerge,
   handleFinalizeStagingStack,
-  handleReinforceOpponentBuildWithStack
+  handleReinforceOpponentBuildWithStack,
+  handleCreateBuildWithValue,
+  handleStageSingleCardFromHand,
+  handleFinalizeTrail
 } from './game-actions.js';

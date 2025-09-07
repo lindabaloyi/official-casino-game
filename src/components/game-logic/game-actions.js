@@ -1,7 +1,7 @@
 import { updateGameState, nextPlayer } from './game-state.js';
 import { rankValue, removeCardFromHand, removeCardsFromTable, sortCardsByRank, calculateCardSum, generateBuildId, findOpponentMatchingCards, createCaptureStack } from './card-operations.js';
 import { canPartitionIntoSums } from './algorithms.js';
-import { validateBuild, validateAddToBuild } from './validation.js';
+import { validateBuild, findPossibleBuildsFromStack } from './validation.js';
 import { logGameState } from './game-state.js';
 
 export const handleTrail = (gameState, card) => {
@@ -96,83 +96,13 @@ export const handleBuild = (gameState, draggedItem, tableCardsInBuild, buildValu
     finalTableCards.push(newBuild);
   }
 
-  // --- NEW: "Automatic Steal" from opponent's capture pile ---
-  let finalPlayerCaptures = playerCaptures;
-  const opponentIndex = 1 - currentPlayer;
-  const opponentCaps = playerCaptures[opponentIndex];
-
-  if (opponentCaps && opponentCaps.length > 0) {
-    const lastCaptureGroup = opponentCaps[opponentCaps.length - 1];
-    if (lastCaptureGroup && lastCaptureGroup.length > 0) {
-      const topCard = lastCaptureGroup[lastCaptureGroup.length - 1];
-      if (rankValue(topCard.rank) === buildValue) {
-        // Match found! Steal the card.
-        const stolenCard = { ...topCard }; // Create a clean copy
-
-        // 1. Add stolen card to the new build (at the bottom/base).
-        newBuild.cards.unshift(stolenCard);
-
-        // 2. Remove the card from the opponent's capture pile.
-        const newOpponentCaps = opponentCaps.map((group, index) =>
-          index === opponentCaps.length - 1 ? group.slice(0, -1) : group
-        ).filter(group => group.length > 0); // Remove empty groups
-
-        finalPlayerCaptures = [...playerCaptures];
-        finalPlayerCaptures[opponentIndex] = newOpponentCaps;
-      }
-    }
-  }
-
   const newState = updateGameState(gameState, {
     playerHands: newPlayerHands,
     tableCards: finalTableCards,
-    playerCaptures: finalPlayerCaptures,
+    playerCaptures: playerCaptures,
   });
 
   logGameState(`Player ${currentPlayer + 1} built a ${buildValue}`, nextPlayer(newState));
-  return nextPlayer(newState);
-};
-
-export const handleAddToBuild = (gameState, playerCard, tableCard, buildToAddTo) => {
-  const { playerHands, tableCards, currentPlayer } = gameState;
-
-  // Validate the add to build action
-  const validation = validateAddToBuild(buildToAddTo, playerCard, tableCard, playerHands[currentPlayer]);
-  if (!validation.valid) {
-    console.warn(validation.message);
-    return gameState;
-  }
-
-  // Create updated build
-  const newBuildCards = [...buildToAddTo.cards, playerCard, tableCard];
-  const sortedCards = sortCardsByRank(newBuildCards);
-
-  const newBuild = {
-    ...buildToAddTo,
-    cards: sortedCards,
-    value: calculateCardSum(sortedCards),
-  };
-
-  // Update game state
-  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, playerCard);
-  if (!newPlayerHands) {
-    return gameState;
-  }
-
-  // Remove old build and loose card, add new build
-  const newTableCards = tableCards.filter(item => {
-    if (item.buildId === buildToAddTo.buildId) return false;
-    if (!item.type && item.rank === tableCard.rank && item.suit === tableCard.suit) return false;
-    return true;
-  });
-  newTableCards.push(newBuild);
-
-  const newState = updateGameState(gameState, {
-    playerHands: newPlayerHands,
-    tableCards: newTableCards,
-  });
-
-  logGameState(`Player ${currentPlayer + 1} added to build of ${newBuild.value}`, nextPlayer(newState));
   return nextPlayer(newState);
 };
 
@@ -423,8 +353,11 @@ export const handleCapture = (gameState, draggedItem, selectedTableCards, oppone
   // --- Contextual check for "Implicit Add to Build" ---
   // If a player has a build, and makes a combination that matches their build's value,
   // it should be treated as adding to the build, not a capture.
+  // This should only apply when combining loose cards, not when targeting a build directly.
   const playerOwnBuild = tableCards.find(item => item.type === 'build' && item.owner === currentPlayer);
-  if (playerOwnBuild && source === 'hand' && !opponentCard) {
+  const isTargetingBuild = selectedTableCards.some(item => item.type === 'build');
+
+  if (playerOwnBuild && source === 'hand' && !opponentCard && !isTargetingBuild) {
     const potentialStackCards = [selectedCard, ...selectedTableCards.flatMap(item => item.cards || [item])];
 
     // Check if the combined cards can be partitioned into sums of the build's value.
@@ -463,12 +396,17 @@ export const handleCapture = (gameState, draggedItem, selectedTableCards, oppone
   let newTableCards = tableCards;
   let newPlayerCaptures = playerCaptures;
 
+  const isFinalizingStack = selectedTableCards.some(item => item.type === 'temporary_stack');
+
   // Update game state
   if (source === 'table') {
     newTableCards = removeCardsFromTable(tableCards, [selectedCard]);
   } else { // Default to hand
-    newPlayerHands = removeCardFromHand(playerHands, currentPlayer, selectedCard);
-    if (!newPlayerHands) return gameState;
+    // If we are finalizing a stack, the hand card has already been removed.
+    if (!isFinalizingStack) {
+      newPlayerHands = removeCardFromHand(playerHands, currentPlayer, selectedCard);
+      if (!newPlayerHands) return gameState;
+    }
   }
 
   // Remove captured cards from table
@@ -500,9 +438,15 @@ export const handleCapture = (gameState, draggedItem, selectedTableCards, oppone
   }
 
   // Flatten captured cards from builds and loose cards
-  const flattenedCapturedCards = selectedTableCards.flatMap(item =>
+  const allCapturedItems = selectedTableCards.flatMap(item =>
     (item.type === 'build' || item.type === 'temporary_stack') ? item.cards : [item]
   );
+
+  // If we are finalizing a stack, the `selectedCard` (from hand) is already inside `allCapturedItems`.
+  // We need to remove it to avoid duplication in the capture pile.
+  const flattenedCapturedCards = isFinalizingStack
+    ? allCapturedItems.filter(c => !(c.source === 'hand' && c.rank === selectedCard.rank && c.suit === selectedCard.suit))
+    : allCapturedItems;
 
   // Create properly ordered capture stack
   const capturedGroup = createCaptureStack(selectedCard, flattenedCapturedCards, opponentCard);
@@ -523,37 +467,6 @@ export const handleCapture = (gameState, draggedItem, selectedTableCards, oppone
 
   logGameState(captureDescription, nextPlayer(newState));
   return nextPlayer(newState);
-};
-
-/**
- * Creates a temporal build using opponent's card for enhanced capture setup.
- * @param {object} gameState - The current game state.
- * @param {object} opponentCard - The opponent's card to use.
- * @param {object} tableCard - The table card to combine with.
- * @returns {object} The updated game state.
- */
-export const handleTemporalBuild = (gameState, opponentCard, tableCard) => {
-  const { tableCards, currentPlayer } = gameState;
-
-  // Create temporal build with opponent's card and table card
-  const temporalBuild = {
-    buildId: generateBuildId(),
-    type: 'temporal_build',
-    cards: [opponentCard, tableCard],
-    value: rankValue(opponentCard.rank),
-    owner: currentPlayer,
-    isTemporal: true
-  };
-
-  // Add temporal build to table
-  const newTableCards = [...tableCards, temporalBuild];
-
-  const newState = updateGameState(gameState, {
-    tableCards: newTableCards,
-  });
-
-  logGameState(`Player ${currentPlayer + 1} created temporal build with opponent's ${opponentCard.rank}`, newState);
-  return newState;
 };
 
 /**
@@ -639,19 +552,25 @@ export const calculateScores = (playerCaptures) => {
   details[0].spadeCount = allPlayerCards[0].filter(c => c.suit === '♠').length;
   details[1].spadeCount = allPlayerCards[1].filter(c => c.suit === '♠').length;
 
-  // Award points for Most Cards (2 pts for >20 cards, 1 pt each for a 20-20 tie)
-  if (details[0].cardCount > 20) {
+  // Award points for Most Cards (2 pts for most, 1 pt each for a tie)
+  if (details[0].cardCount > details[1].cardCount) {
     details[0].mostCards = 2;
-  } else if (details[1].cardCount > 20) {
+  } else if (details[1].cardCount > details[0].cardCount) {
     details[1].mostCards = 2;
-  } else if (details[0].cardCount === 20 && details[1].cardCount === 20) {
+  } else if (details[0].cardCount > 0 && details[0].cardCount === details[1].cardCount) {
     details[0].mostCards = 1;
     details[1].mostCards = 1;
   }
 
-  // Award points for Most Spades (2 pts for 6+ spades)
-  if (details[0].spadeCount >= 6) details[0].mostSpades = 2;
-  if (details[1].spadeCount >= 6) details[1].mostSpades = 2;
+  // Award points for Most Spades (2 pts for most, 1 pt each for a tie)
+  if (details[0].spadeCount > details[1].spadeCount) {
+    details[0].mostSpades = 2;
+  } else if (details[1].spadeCount > details[0].spadeCount) {
+    details[1].mostSpades = 2;
+  } else if (details[0].spadeCount > 0 && details[0].spadeCount === details[1].spadeCount) {
+    details[0].mostSpades = 1;
+    details[1].mostSpades = 1;
+  }
 
   // Award points for specific cards
   allPlayerCards.forEach((cards, playerIndex) => {
@@ -768,18 +687,49 @@ export const handleAddToStagingStack = (gameState, handCard, targetStack) => {
  * @returns {object} The updated game state.
  */
 export const handleDisbandStagingStack = (gameState, stackToDisband) => {
-  const { tableCards, currentPlayer } = gameState;
+  let { playerHands, tableCards, playerCaptures, currentPlayer } = gameState;
 
-  // 1. Get the cards from the stack, stripping the 'source' property so they become standard loose cards.
-  const looseCards = stackToDisband.cards.map(({ source, ...card }) => card);
+  const handCards = [];
+  const newLooseCards = [];
+  const opponentCards = [];
 
-  // 2. Remove the temporary stack from the table.
-  const newTableCards = tableCards.filter(s => s.stackId !== stackToDisband.stackId);
+  // 1. Sort cards back to their original sources by reading their 'source' property
+  for (const card of stackToDisband.cards) {
+    const cardData = { ...card };
+    delete cardData.source; // Clean up the source property
 
-  // 3. Add the loose cards back to the table.
-  newTableCards.push(...looseCards);
+    if (card.source === 'hand') handCards.push(cardData);
+    else if (card.source === 'opponentCapture') opponentCards.push(cardData);
+    else newLooseCards.push(cardData); // Default to table
+  }
 
-  const newState = updateGameState(gameState, { tableCards: newTableCards });
+  // 2. Update player's hand
+  const currentHand = [...playerHands[currentPlayer], ...handCards];
+  const newPlayerHands = [...playerHands];
+  newPlayerHands[currentPlayer] = currentHand;
+
+  // 3. Update opponent's capture pile (if applicable)
+  if (opponentCards.length > 0) {
+    const opponentIndex = 1 - currentPlayer;
+    let opponentCaps = [...(playerCaptures[opponentIndex] || [])];
+    if (opponentCaps.length > 0) {
+      // Add cards back to the last capture group
+      opponentCaps[opponentCaps.length - 1].push(...opponentCards);
+    } else {
+      // If opponent had no captures, create a new group
+      opponentCaps.push(opponentCards);
+    }
+    const newPlayerCaptures = [...playerCaptures];
+    newPlayerCaptures[opponentIndex] = opponentCaps;
+    playerCaptures = newPlayerCaptures;
+  }
+
+  // 4. Update table cards by removing the stack and adding back any loose cards
+  let newTableCards = tableCards.filter(s => s.stackId !== stackToDisband.stackId);
+  newTableCards.push(...newLooseCards);
+
+  // 5. Return the new state and end the player's turn.
+  const newState = updateGameState(gameState, { playerHands: newPlayerHands, tableCards: newTableCards, playerCaptures });
   logGameState(`Player ${currentPlayer + 1}'s temporary stack was invalid and disbanded.`, nextPlayer(newState));
   return nextPlayer(newState);
 };
@@ -929,18 +879,38 @@ export const handleExtendToMerge = (gameState, handCard, opponentBuild, ownBuild
 };
 
 /**
- * Finalizes a temporary staging stack into a new, permanent build.
- * This action ends the player's turn.
+ * Finalizes a temporary staging stack. This can result in three outcomes:
+ * 1. A single valid build is created, and the new game state is returned.
+ * 2. Multiple valid builds are possible, and an 'options' object is returned for UI handling.
+ * 3. No valid build is possible, and an 'error' object is returned.
  * @param {object} gameState - The current game state.
  * @param {object} stack - The temporary stack to finalize.
- * @returns {object} The updated game state.
+ * @returns {object} The new gameState, or an object with 'options' or 'error'.
  */
 export const handleFinalizeStagingStack = (gameState, stack) => {
-  const { tableCards, currentPlayer } = gameState;
+  const { playerHands, tableCards, currentPlayer } = gameState;
+  const playerHand = playerHands[currentPlayer];
 
-  const buildValue = calculateCardSum(stack.cards.map(({ source, ...card }) => card));
+  // Find all possible valid builds from this stack
+  const possibleBuilds = findPossibleBuildsFromStack(stack, playerHand, tableCards, currentPlayer);
 
-  // Create the new permanent build
+  if (possibleBuilds.length === 0) {
+    return { error: true, message: "This stack does not form a valid build with any card in your hand." };
+  }
+
+  if (possibleBuilds.length > 1) {
+    // Return options for the UI to handle
+    const handCardUsed = stack.cards.find(c => c.source === 'hand');
+    return {
+      options: possibleBuilds,
+      stack,
+      draggedItem: { card: handCardUsed, source: 'hand' }
+    };
+  }
+
+  // Only one possible build, so create it.
+  const buildValue = possibleBuilds[0];
+
   const newBuild = {
     buildId: generateBuildId(),
     type: 'build',
@@ -953,8 +923,109 @@ export const handleFinalizeStagingStack = (gameState, stack) => {
   const newTableCards = tableCards.filter(s => s.stackId !== stack.stackId);
   newTableCards.push(newBuild);
 
-  const newState = updateGameState(gameState, { tableCards: newTableCards });
+  // The hand card was already removed when the stack was created. The gameState is already correct.
+  const newState = updateGameState(gameState, {
+    tableCards: newTableCards,
+  });
   logGameState(`Player ${currentPlayer + 1} finalized a build of ${newBuild.value}`, nextPlayer(newState));
+  return nextPlayer(newState);
+};
+
+/**
+ * Creates a permanent build from a staging stack with a specific, user-chosen value.
+ * @param {object} gameState - The current game state.
+ * @param {object} stack - The temporary stack to build from.
+ * @param {number} buildValue - The specific value chosen by the user.
+ * @returns {object} The updated game state.
+ */
+export const handleCreateBuildWithValue = (gameState, stack, buildValue) => {
+  const { tableCards, currentPlayer } = gameState;
+
+  // 1. Get the cards that make up the build from the stack
+  const initialBuildCards = stack.cards.map(({ source, ...card }) => card);
+
+  // 2. Find other matching items on the table to auto-group
+  const matchingItemsOnTable = tableCards.filter(item => {
+    // Don't match with the stack we are finalizing
+    if (item.stackId && item.stackId === stack.stackId) return false;
+
+    const itemValue = item.type === 'build' ? item.value : rankValue(item.rank);
+    return itemValue === buildValue;
+  });
+
+  let finalBuildCards;
+  let itemsToRemoveFromTable = [stack];
+  let isExtendable = true;
+
+  if (matchingItemsOnTable.length > 0) {
+    // Auto-grouping path
+    const baseCards = matchingItemsOnTable.flatMap(item => item.cards || [item]);
+    const sortedBaseCards = sortCardsByRank(baseCards);
+    const sortedActionCards = sortCardsByRank(initialBuildCards);
+
+    // The user wants the base cards (from the table) at the bottom, and action cards on top.
+    finalBuildCards = [...sortedBaseCards, ...sortedActionCards];
+    itemsToRemoveFromTable.push(...matchingItemsOnTable);
+    isExtendable = false; // Auto-grouped builds are not extendable
+  } else {
+    // Standard build path
+    finalBuildCards = sortCardsByRank(initialBuildCards);
+  }
+
+  const newBuild = { buildId: generateBuildId(), type: 'build', cards: finalBuildCards, value: buildValue, owner: currentPlayer, isExtendable: isExtendable };
+
+  // Remove the staging stack and any auto-grouped items from the table
+  const newTableCards = removeCardsFromTable(tableCards, itemsToRemoveFromTable);
+  newTableCards.push(newBuild);
+
+  const newState = updateGameState(gameState, { tableCards: newTableCards });
+  logGameState(`Player ${currentPlayer + 1} created a build of ${buildValue}`, nextPlayer(newState));
+  return nextPlayer(newState);
+};
+
+/**
+ * Creates a temporary staging stack with a single card from the player's hand.
+ * This is used in Round 2 when a player trails a card. This action does not end the turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} card - The card from the player's hand.
+ * @returns {object} The updated game state.
+ */
+export const handleStageSingleCardFromHand = (gameState, card) => {
+  const { playerHands, tableCards, currentPlayer } = gameState;
+
+  const newPlayerHands = removeCardFromHand(playerHands, currentPlayer, card);
+  if (!newPlayerHands) return gameState;
+
+  const newStack = {
+    stackId: `temp-${Date.now()}`,
+    type: 'temporary_stack',
+    cards: [{ ...card, source: 'hand' }], // The single card, tagged with its source
+    owner: currentPlayer,
+  };
+
+  const newTableCards = [...tableCards, newStack];
+
+  return updateGameState(gameState, { playerHands: newPlayerHands, tableCards: newTableCards });
+};
+
+/**
+ * Finalizes a single-card staging stack as a trailed card on the table.
+ * This action ends the player's turn.
+ * @param {object} gameState - The current game state.
+ * @param {object} stack - The single-card temporary stack to finalize.
+ * @returns {object} The updated game state.
+ */
+export const handleFinalizeTrail = (gameState, stack) => {
+  const { tableCards, currentPlayer } = gameState;
+
+  const cardToTrail = { ...stack.cards[0] };
+  delete cardToTrail.source;
+
+  const newTableCards = tableCards.filter(s => s.stackId !== stack.stackId);
+  newTableCards.push(cardToTrail);
+
+  const newState = updateGameState(gameState, { tableCards: newTableCards });
+  logGameState(`Player ${currentPlayer + 1} trailed a ${cardToTrail.rank}`, nextPlayer(newState));
   return nextPlayer(newState);
 };
 

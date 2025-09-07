@@ -7,7 +7,6 @@ import {
   handleCapture,
   handleTrail,
   handleBaseBuild,
-  handleTemporalBuild,
   handleAddToOpponentBuild,
   startNextRound,
   handleSweep,
@@ -24,10 +23,13 @@ import {
   handleStageOpponentCard,
   handleExtendToMerge,
   handleReinforceOpponentBuildWithStack,
-  handleFinalizeStagingStack
+  handleFinalizeStagingStack,
+  handleCreateBuildWithValue,
+  handleStageSingleCardFromHand,
+  handleFinalizeTrail
 } from './game-logic/index.js';
 import { rankValue, findBaseBuilds, findOpponentMatchingCards, countIdenticalCardsInHand, getCardId, calculateCardSum, canPartitionIntoSums } from './game-logic/index.js';
-import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild, validateReinforceBuildWithStack, validateMergeIntoOwnBuild, validateExtendToMerge, validateFinalizeStagingStack, validateReinforceOpponentBuildWithStack } from './game-logic/validation.js';
+import { validateAddToOpponentBuild, validateTrail, validateAddToOwnBuild, validateTemporaryStackBuild, validateReinforceBuildWithStack, validateMergeIntoOwnBuild, validateExtendToMerge, validateReinforceOpponentBuildWithStack, findPossibleBuildsFromStack } from './game-logic/validation.js';
 
 // Import notification system
 import { useNotifications } from './styles/NotificationSystem';
@@ -85,7 +87,21 @@ export const useGameActions = () => {
         return currentGameState;
       }
 
-      const { tableCards, round } = currentGameState;
+      const { tableCards, round, currentPlayer } = currentGameState;
+
+      // In Round 2, trailing a card creates a temporary stack instead.
+      if (round === 2) {
+        const playerAlreadyHasTempStack = tableCards.some(
+          s => s.type === 'temporary_stack' && s.owner === currentPlayer
+        );
+        if (playerAlreadyHasTempStack) {
+          showError("You can only have one staging stack at a time.");
+          return currentGameState;
+        }
+        return handleStageSingleCardFromHand(currentGameState, card);
+      }
+
+      // Original Round 1 logic
       const validation = validateTrail(tableCards, card, player, round);
 
       if (!validation.valid) {
@@ -93,11 +109,9 @@ export const useGameActions = () => {
         return currentGameState;
       }
 
-      // If validation passes, execute the trail action.
-      // The handleTrail function now assumes the move is valid.
       return handleTrail(currentGameState, card);
     });
-  }, [showError, handleTrail]);
+  }, [showError]);
 
   // Helper function to create action options for modal
   const createActionOption = (type, label, payload) => ({
@@ -114,42 +128,45 @@ export const useGameActions = () => {
     );
   };
 
-  const handleModalAction = useCallback((action) => {
-    setGameState(currentGameState => {
-      if (!action || !action.payload) return currentGameState;
+  // Centralized helper to execute actions and update state.
+  // Wrapped in useCallback to be stable and prevent re-renders of dependent hooks.
+  const executeAction = useCallback((currentGameState, action) => {
+    if (!action || !action.payload) return currentGameState;
+    const { draggedItem } = action.payload;
 
-      const { draggedItem } = action.payload;
-
-      switch (action.type) {
-        case 'capture':
-          return handleCapture(currentGameState, draggedItem, [action.payload.targetCard]);
-        case 'enhanced_capture':
-          return handleCapture(currentGameState, draggedItem, [action.payload.targetCard], action.payload.opponentCard);
-        case 'build':
-          return handleBuild(
-            currentGameState,
-            draggedItem,
-            [action.payload.targetCard],
-            action.payload.buildValue,
-            action.payload.biggerCard,
-            action.payload.smallerCard
-          );
-        case 'baseBuild':
-          return handleBaseBuild(currentGameState, draggedItem, action.payload.baseCard, action.payload.otherCardsInBuild);
-        case 'addToOpponentBuild':
-          return handleAddToOpponentBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
-        case 'addToOwnBuild':
-          return handleAddToOwnBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
-        case 'createBuildFromStack':
-          return handleCreateBuildFromStack(currentGameState, draggedItem, action.payload.stackToBuildFrom);
-        case 'extendToMerge':
-          return handleExtendToMerge(currentGameState, draggedItem.card, action.payload.opponentBuild, action.payload.ownBuild);
-        default:
-          return currentGameState;
-      }
-    });
-    setModalInfo(null);
+    switch (action.type) {
+      case 'capture':
+        return handleCapture(currentGameState, draggedItem, [action.payload.targetCard]);
+      case 'build':
+        return handleBuild(
+          currentGameState,
+          draggedItem,
+          [action.payload.targetCard],
+          action.payload.buildValue,
+          action.payload.biggerCard,
+          action.payload.smallerCard
+        );
+      case 'baseBuild':
+        return handleBaseBuild(currentGameState, draggedItem, action.payload.baseCard, action.payload.otherCardsInBuild);
+      case 'addToOpponentBuild':
+        return handleAddToOpponentBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
+      case 'addToOwnBuild':
+        return handleAddToOwnBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
+      case 'createBuildFromStack':
+        return handleCreateBuildFromStack(currentGameState, draggedItem, action.payload.stackToBuildFrom);
+      case 'extendToMerge':
+        return handleExtendToMerge(currentGameState, draggedItem.card, action.payload.opponentBuild, action.payload.ownBuild);
+      case 'createBuildWithValue':
+        return handleCreateBuildWithValue(currentGameState, action.payload.stack, action.payload.buildValue);
+      default:
+        return currentGameState;
+    }
   }, []);
+
+  const handleModalAction = useCallback((action) => {
+    setGameState(currentGameState => executeAction(currentGameState, action));
+    setModalInfo(null);
+  }, [executeAction]);
 
 
   // Helper function to generate possible actions for loose card drops
@@ -219,18 +236,6 @@ export const useGameActions = () => {
           'baseBuild',
           `Build ${rankValue(draggedCard.rank)} on ${looseCard.rank} with ${combination.map(c => c.rank).join('+')}`,
           { draggedItem, baseCard: looseCard, otherCardsInBuild: combination }
-        ));
-      });
-    }
-
-    // --- Possibility 5: Enhanced Capture (using opponent's cards) ---
-    if (rankValue(draggedCard.rank) === rankValue(looseCard.rank)) {
-      const opponentMatchingCards = findOpponentMatchingCards(opponentCaptures, draggedCard);
-      opponentMatchingCards.forEach(opponentCard => {
-        actions.push(createActionOption(
-          'enhanced_capture',
-          `Capture ${looseCard.rank} using opponent's ${opponentCard.rank}`,
-          { draggedItem, targetCard: looseCard, opponentCard }
         ));
       });
     }
@@ -432,47 +437,26 @@ export const useGameActions = () => {
         }
 
         if (!targetCard) {
-          showError("Target card not found on table. The card may have already been captured.");
+          showError("Target card not found on table.");
           return currentGameState;
         }
 
-        const possibleActions = generatePossibleActions(draggedItem, targetCard, playerHand, tableCards, playerCaptures, currentPlayer);
+        // --- UNIFIED STAGING APPROACH ---
+        // Any drop of a hand card onto a loose card now creates a staging stack.
+        // The decision of what to do (capture/build) is deferred until the user clicks "Confirm".
 
-        if (possibleActions.length === 0) {
-          // --- NEW: CONTEXTUAL STAGING LOGIC ---
-          // If no direct actions are possible, check if we should create a staging stack.
-          const playerOwnsBuild = tableCards.find(c => c.type === 'build' && c.owner === currentPlayer);
-          if (playerOwnsBuild && draggedItem.source === 'hand') {
-            // --- NEW VALIDATION: Enforce one temp stack at a time ---
-            const playerAlreadyHasTempStack = tableCards.some(
-              s => s.type === 'temporary_stack' && s.owner === currentPlayer
-            );
-            if (playerAlreadyHasTempStack) {
-              showError("You can only have one staging stack at a time. Try adding to your existing stack.");
-              return currentGameState;
-            }
-            // The player has a build and is trying to combine their hand card with a table card.
-            // Assume they are starting a staging stack.
-            const { card: draggedCard } = draggedItem;
-            return handleCreateStagingStack(currentGameState, draggedCard, targetCard);
-          }
-          // --- END NEW LOGIC ---
-
-          showError("No valid moves with this card combination.");
-          return currentGameState;
-        } else if (possibleActions.length === 1) {
-          // Execute action immediately
-          const newState = executeAction(currentGameState, possibleActions[0]);
-          return newState;
-        } else {
-          // Show modal for user to choose
-          setModalInfo({
-            title: 'Choose Your Action',
-            message: `What would you like to do with the ${draggedItem.card.rank} and ${targetCard.rank}?`,
-            actions: possibleActions,
-          });
+        // First, check for existing staging stacks to avoid having multiple.
+        const playerAlreadyHasTempStack = tableCards.some(
+          s => s.type === 'temporary_stack' && s.owner === currentPlayer
+        );
+        if (playerAlreadyHasTempStack) {
+          showError("You can only have one staging stack at a time. Try adding to your existing stack.");
           return currentGameState;
         }
+
+        const { card: draggedCard } = draggedItem;
+        // Call the action to create the stack. This action will remove the card from hand.
+        return handleCreateStagingStack(currentGameState, draggedCard, targetCard);
       };
 
       // Handler for dropping on a build
@@ -597,38 +581,6 @@ export const useGameActions = () => {
     });
   }, [showError, setModalInfo, handleModalAction]);
 
-  // Helper function to execute actions within setGameState
-  const executeAction = (currentGameState, action) => {
-    const { draggedItem } = action.payload;
-    switch (action.type) {
-      case 'capture':
-        return handleCapture(currentGameState, draggedItem, [action.payload.targetCard]);
-      case 'enhanced_capture':
-        return handleCapture(currentGameState, draggedItem, [action.payload.targetCard], action.payload.opponentCard);
-      case 'build':
-        return handleBuild(
-          currentGameState,
-          draggedItem,
-          [action.payload.targetCard],
-          action.payload.buildValue,
-          action.payload.biggerCard,
-          action.payload.smallerCard
-        );
-      case 'baseBuild':
-        return handleBaseBuild(currentGameState, draggedItem, action.payload.baseCard, action.payload.otherCardsInBuild);
-      case 'addToOpponentBuild':
-        return handleAddToOpponentBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
-      case 'addToOwnBuild':
-        return handleAddToOwnBuild(currentGameState, draggedItem, action.payload.buildToAddTo);
-      case 'createBuildFromStack':
-        return handleCreateBuildFromStack(currentGameState, draggedItem, action.payload.stackToBuildFrom);
-      case 'extendToMerge':
-        return handleExtendToMerge(currentGameState, draggedItem.card, action.payload.opponentBuild, action.payload.ownBuild);
-      default:
-        return currentGameState;
-    }
-  };
-
   const handleCancelStagingStackAction = useCallback((stack) => {
     setGameState(currentGameState => {
       return handleCancelStagingStack(currentGameState, stack);
@@ -657,17 +609,67 @@ export const useGameActions = () => {
 
   const handleConfirmStagingStackAction = useCallback((stack) => {
     setGameState(currentGameState => {
-      const { playerHands, tableCards, currentPlayer } = currentGameState;
-      const validation = validateFinalizeStagingStack(stack, playerHands[currentPlayer], tableCards, currentPlayer);
-
-      if (!validation.valid) {
-        showError(validation.message);
-        return currentGameState;
+      // --- Handle single-card trail confirmation ---
+      if (stack.cards.length === 1 && stack.cards[0].source === 'hand') {
+        // This is a confirmation of a trail action in round 2.
+        return handleFinalizeTrail(currentGameState, stack);
       }
 
-      return handleFinalizeStagingStack(currentGameState, stack);
+      const { playerHands, tableCards, currentPlayer } = currentGameState;
+      const playerHand = playerHands[currentPlayer];
+      const actions = [];
+
+      // --- Validation: A final stack must have exactly one hand card ---
+      const handCardsInStack = stack.cards.filter(c => c.source === 'hand');
+      if (handCardsInStack.length !== 1) {
+        showError("A final move must be made with exactly one card from your hand.");
+        return handleDisbandStagingStack(currentGameState, stack);
+      }
+      const handCard = handCardsInStack[0];
+      const tableCardsInStack = stack.cards.filter(c => c.source !== 'hand');
+
+      // --- Possibility 1: Capture ---
+      const sumOfTableCards = calculateCardSum(tableCardsInStack);
+      const captureValue = rankValue(handCard.rank);
+
+      if (tableCardsInStack.length > 0 && sumOfTableCards % captureValue === 0) {
+        if (sumOfTableCards === captureValue || canPartitionIntoSums(tableCardsInStack, captureValue)) {
+          actions.push(createActionOption('capture', `Capture for ${captureValue}`, {
+            draggedItem: { card: handCard, source: 'hand' },
+            targetCard: stack // The whole stack is the target
+          }));
+        }
+      }
+
+      // --- Possibility 2: Build ---
+      const possibleBuilds = findPossibleBuildsFromStack(stack, playerHand, tableCards, currentPlayer);
+      possibleBuilds.forEach(value => {
+        actions.push(createActionOption('createBuildWithValue', `Create a Build of ${value}`, {
+          stack: stack,
+          buildValue: value,
+          draggedItem: { card: handCard, source: 'hand' }
+        }));
+      });
+
+      // --- Decision Logic ---
+      if (actions.length === 0) {
+        showError("This combination is not a valid capture or build.");
+        return handleDisbandStagingStack(currentGameState, stack);
+      }
+
+      if (actions.length === 1) {
+        return executeAction(currentGameState, actions[0]);
+      }
+
+      // More than one action, show the modal
+      setModalInfo({
+        title: 'Choose Your Action',
+        message: `This combination can form multiple actions. Please choose one:`,
+        actions: actions
+      });
+      return currentGameState;
     });
-  }, [showError]);
+  }, [showError, setModalInfo, createActionOption, executeAction]);
 
   return { gameState, modalInfo, handleTrailCard, handleDropOnCard, handleModalAction, setModalInfo, executeAction, handleCancelStagingStackAction, handleStageOpponentCardAction, handleConfirmStagingStackAction };
 };
