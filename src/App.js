@@ -5,6 +5,7 @@ import GameBoard from './components/GameBoard';
 import StartMenu from './components/StartMenu';
 import Lobby from './components/Lobby';
 import { NotificationProvider } from './components/styles/NotificationSystem';
+import { SocketProvider } from './contexts/SocketContext';
 
 import './App.css';
 
@@ -34,15 +35,17 @@ function App() {
   };
 
   return (
-    <div className="App">
-      <DndProvider backend={HTML5Backend}>
-        <NotificationProvider>
-          {screen === 'start' && <StartMenu onPlay={handlePlay} />}
-          {screen === 'lobby' && <Lobby onInvite={() => { /* Placeholder */ }} />}
-          <GameBoard key={key} onRestart={handleRestart} gameMode={gameMode} />
-        </NotificationProvider>
-      </DndProvider>
-    </div>
+    <SocketProvider>
+      <div className="App">
+        <DndProvider backend={HTML5Backend}>
+          <NotificationProvider>
+            {screen === 'start' && <StartMenu onPlay={handlePlay} />}
+            {screen === 'lobby' && <Lobby onInvite={() => { /* Placeholder */ }} />}
+            <GameBoard key={key} onRestart={handleRestart} gameMode={gameMode} />
+          </NotificationProvider>
+        </DndProvider>
+      </div>
+    </SocketProvider>
   );
 }
 
