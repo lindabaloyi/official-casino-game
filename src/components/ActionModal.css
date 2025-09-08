@@ -1,0 +1,71 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8); /* Consistent with Lobby/StartMenu */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000; /* Consistent with Lobby/StartMenu */
+  backdrop-filter: blur(8px); /* Consistent with Lobby */
+}
+
+.modal-content {
+  width: 90%;
+  max-width: 500px; /* Slightly adjusted max-width */
+  background: var(--secondary-bg); /* Consistent */
+  padding: 2rem; /* Consistent */
+  border-radius: var(--border-radius); /* Consistent */
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.2); /* Consistent */
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5); /* Consistent */
+}
+
+.modal-content h3 {
+  margin: 0 0 1rem 0; /* Consistent with Lobby h2 */
+  color: var(--accent); /* Consistent */
+  font-size: 2rem; /* Adjusted for modal heading */
+  font-family: var(--font-secondary); /* Consistent */
+}
+
+.modal-content p {
+  color: var(--text-secondary); /* Consistent */
+  margin-bottom: 1.5rem; /* Consistent with Lobby p */
+  font-size: 1.1rem; /* Consistent with Lobby p */
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem; /* Spacing between buttons */
+  margin-top: 1rem; /* Consistent with Lobby button margin */
+}
+
+.modal-actions button {
+  padding: 0.8rem 1.5rem; /* Adjusted padding */
+  background: var(--accent); /* Consistent */
+  color: var(--primary-bg); /* Consistent */
+  border: none;
+  border-radius: 6px; /* Consistent */
+  font-size: 1rem; /* Consistent with Lobby button */
+  font-weight: 500; /* Consistent */
+  cursor: pointer;
+  transition: var(--transition); /* Consistent */
+  text-transform: uppercase; /* Consistent with StartMenu buttons */
+  letter-spacing: 0.5px; /* Consistent with StartMenu buttons */
+}
+
+.modal-actions button:hover {
+  transform: translateY(-2px); /* Consistent with Lobby button hover */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Consistent with Lobby button hover */
+}
+
+.modal-actions button:last-child { /* Style for the Cancel/Decline button */
+  background-color: #6c757d; /* Keep a distinct color for decline */
+}
+
+.modal-actions button:last-child:hover {
+  background-color: #5a6268;
+}

@@ -11,6 +11,7 @@ const ActionModal = ({ modalInfo, onAction, onCancel }) => {
 
   return (
     <div className="modal-overlay">
+      <div className="modal-overlay">
       <div className="modal-content">
         <h3>{title}</h3>
         <p>{message}</p>
@@ -23,6 +24,7 @@ const ActionModal = ({ modalInfo, onAction, onCancel }) => {
           <button onClick={onCancel}>Cancel</button>
         </div>
       </div>
+    </div>
     </div>
   );
 };

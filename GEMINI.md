@@ -192,13 +192,37 @@ src/components/ui/
 
 Interactive elements are handled by `DraggableCard` and `CardStack` components. The on-table stacking mechanic, managed within `GameBoard.js`, serves as the primary interface for all complex moves.
 
+## 5. Server-Side Architecture
+
+The game utilizes a Node.js server with Express.js and Socket.IO to manage real-time communication and game state between players.
+
+### Technologies Used:
+*   **Express.js**: A minimal and flexible Node.js web application framework that provides a robust set of features for web and mobile applications.
+*   **Socket.IO**: A library that enables real-time, bidirectional, and event-based communication between the browser and the server.
+
+### Core Functionalities:
+
+1.  **Player Management**:
+    *   **Connection/Disconnection**: Handles new player connections and disconnections, assigning a unique `socket.id` and associating it with a `username`.
+    *   **Online Player List**: Maintains an `onlinePlayers` object, which stores details (`id`, `username`, `status`) of all connected players. This list is broadcast to all clients upon updates.
+    *   **Username Registration**: A middleware ensures that each connecting socket provides a `username` for identification.
+
+2.  **Game Invitation System**:
+    *   **`client:send-invite`**: Allows a player to send a game invitation to another available player. It updates the status of both sender and recipient to `pending-invite` and notifies the recipient.
+    *   **`client:decline-invite`**: Handles the declining of an invitation. It resets the status of both players to `available` and notifies the sender.
+    *   **`client:accept-invite`**: Processes the acceptance of an invitation. It changes the status of both players to `in-game`, creates a unique `gameId`, and joins both players into a Socket.IO room associated with that `gameId`. It then emits a `server:game-starting` event to the players in the new game room.
+
+### Server Configuration:
+*   The server listens on port `3001` by default, configurable via the `PORT` environment variable.
+*   CORS is configured to allow connections from `http://localhost:3000`, which is the expected origin of the React client application.
+
 ### Custom Hooks:
 
 *   **`useGameState.js`**: Encapsulates the core `gameState` object and provides memoized selectors to derive state for UI components.
 *   **`useGameActions.js`**: A specialized hook used by `GameBoard.js` to handle complex user interactions. It orchestrates calls to the pure functions in `game-logic` and manages temporary UI state, like the staging of card stacks.
 *   **`useNotifications.js`**: A hook that provides functions (`showError`, `showSuccess`, etc.) to display non-blocking toast notifications for user feedback, replacing browser `alert()`s.
 
-## 5. Development Guidelines
+## 6. Development Guidelines
 
 To ensure consistency and maintainability, please follow these guidelines when adding new features or modifying existing code.
 
