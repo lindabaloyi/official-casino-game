@@ -6,10 +6,18 @@ import { initializeGame } from './game-logic/game-state'; // Import the game ini
 const OnlineGameMode = ({ gameData }) => {
   const socket = useContext(SocketContext);
   const [gameState, setGameState] = useState(null);
+  const [localPlayerIndex, setLocalPlayerIndex] = useState(null); // New state for player index
   const [connectionStatus, setConnectionStatus] = useState('connecting');
 
   useEffect(() => {
     if (!socket || !gameData) return;
+
+    // Determine the local player's index (0 or 1) as soon as we have the data.
+    const playerIndex = gameData.players.findIndex(p => p.id === socket.id);
+    if (playerIndex !== -1) {
+      console.log(`[ONLINE_GAME_MODE] Setting local player index: ${playerIndex}`);
+      setLocalPlayerIndex(playerIndex);
+    }
 
     // --- NEW LISTENERS for host-client initialization ---
     const handleInitializeGame = ({ gameId, players }) => {
@@ -68,8 +76,7 @@ const OnlineGameMode = ({ gameData }) => {
     };
   }, [socket, gameData]);
 
-  // Show loading/waiting state while connecting or initializing
-  if (!gameState) {
+  if (!gameState || localPlayerIndex === null) {
     let statusMessage = 'Setting up your multiplayer game...';
     if (connectionStatus === 'initializing') {
       statusMessage = 'Setting up the deck and dealing cards...';
@@ -105,10 +112,12 @@ const OnlineGameMode = ({ gameData }) => {
     <GameBoard
       gameMode="online"
       currentPlayerId={socket.id}
+      localPlayerIndex={localPlayerIndex}
       gameState={gameState}
       onRestart={() => window.location.reload()} // Simple restart for now
     />
   );
+
 };
 
 export default OnlineGameMode;

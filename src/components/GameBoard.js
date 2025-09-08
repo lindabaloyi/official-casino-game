@@ -91,45 +91,56 @@ const TableCardsSection = React.memo(({ tableCards, onDropOnCard, currentPlayer,
   </section>
 ));
 
-const PlayerHandsSection = React.memo(({ playerHands, currentPlayer, gameMode, currentPlayerId, players }) => {
+const PlayerHandsSection = React.memo(({ playerHands, currentPlayer, gameMode, localPlayerIndex, players }) => {
+  // In online mode, only render the local player's hand.
+  if (gameMode === 'online') {
+    // Don't render anything if the data isn't ready yet.
+    if (localPlayerIndex === null || !playerHands || !playerHands[localPlayerIndex]) {
+      return <section className="player-hands-section" aria-label="Player Hands"></section>;
+    }
+
+    const localHand = playerHands[localPlayerIndex];
+    const localPlayerInfo = Array.isArray(players) ? players[localPlayerIndex] : null;
+    const playerLabel = localPlayerInfo?.username || `Player ${localPlayerIndex + 1}`;
+    const isTurn = currentPlayer === localPlayerIndex;
+
+    return (
+      <section className="player-hands-section" aria-label="Player Hands">
+        <div className={`player-area ${isTurn ? 'current-player-area' : ''}`}>
+          <h3>{playerLabel}{isTurn && " (Your Turn)"}</h3>
+          <PlayerHand
+            player={localPlayerIndex}
+            cards={localHand}
+            isCurrent={isTurn}
+            gameMode={gameMode}
+          />
+        </div>
+      </section>
+    );
+  }
+
+  // --- Original logic for local mode (rendering both hands) ---
   const hands = Array.isArray(playerHands) ? playerHands : [[], []];
-  // Always render the current player first, then the opponent.
-  const displayOrder = [currentPlayer, 1 - currentPlayer];
+  const displayOrder = [0, 1]; // Fixed order for local play
 
   return (
     <section className="player-hands-section" aria-label="Player Hands">
-      {displayOrder.map((playerIndex, i) => {
+      {displayOrder.map((playerIndex) => {
         const hand = hands[playerIndex] || [];
-        const isTurn = playerIndex === currentPlayer;
-
-        let playerLabel = `Player ${playerIndex + 1}`;
-        if (gameMode === 'online' && Array.isArray(players) && players[playerIndex]) {
-          playerLabel = players[playerIndex].username || `Player ${playerIndex + 1}`;
-        }
-
-        // The first player in the order is the one whose turn it is.
-        const isFirstRendered = i === 0;
+        const isTurn = currentPlayer === playerIndex;
+        const playerLabel = `Player ${playerIndex + 1}`;
 
         return (
           <div
             key={playerIndex}
             className={`player-area ${isTurn ? 'current-player-area' : 'opponent-area'}`}>
-            <h3>{playerLabel}</h3>
-            {/* In online mode, the second rendered player is the opponent and gets a placeholder. */}
-            {gameMode === 'online' && !isFirstRendered ? (
-              <div className="opponent-hand-placeholder">
-                <div className="card-back-placeholder">
-                  <span>Opponent's Hand</span>
-                </div>
-              </div>
-            ) : (
-              <PlayerHand
-                player={playerIndex}
-                cards={hand}
-                isCurrent={isTurn}
-                gameMode={gameMode}
-              />
-            )}
+            <h3>{playerLabel}{isTurn && " (Your Turn)"}</h3>
+            <PlayerHand
+              player={playerIndex}
+              cards={hand}
+              isCurrent={isTurn}
+              gameMode={gameMode}
+            />
           </div>
         );
       })}
@@ -188,7 +199,7 @@ const GameOverSection = React.memo(({ winner, scoreDetails, onRestart }) => {
   );
 });
 
-function GameBoard({ onRestart, gameMode, currentPlayerId, gameState: externalGameState }) {
+function GameBoard({ onRestart, gameMode, currentPlayerId, localPlayerIndex, gameState: externalGameState }) {
   const {
     gameState: localGameState,
     modalInfo,
@@ -303,7 +314,7 @@ function GameBoard({ onRestart, gameMode, currentPlayerId, gameState: externalGa
         playerHands={safeGameState.playerHands}
         currentPlayer={safeGameState.currentPlayer}
         gameMode={gameMode}
-        currentPlayerId={currentPlayerId}
+        localPlayerIndex={localPlayerIndex}
         players={safeGameState.players}
       />
 
