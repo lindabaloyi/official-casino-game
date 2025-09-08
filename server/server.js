@@ -157,13 +157,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('client:accept-invite', ({ senderId }) => {
-    console.log(`Server: Received client:accept-invite from ${socket.id} for sender ${senderId}`);
+    console.log(`[ACCEPT_INVITE] Received from ${socket.username} for ${senderId}`);
     const sender = onlinePlayers[senderId];
     const recipient = onlinePlayers[socket.id];
 
     // Validate invitation state before accepting
     if (!sender || !recipient || sender.status !== 'pending-invite' || recipient.status !== 'pending-invite') {
-      console.log(`Invalid accept attempt from ${recipient?.username || 'unknown'} to ${sender?.username || 'unknown'}`);
+      console.log(`[ACCEPT_INVITE] Invalid accept attempt from ${recipient?.username || 'unknown'} to ${sender?.username || 'unknown'}`);
       socket.emit('server:error', { message: 'No active invitation to accept' });
 
       // Reset statuses if one party is invalid
@@ -201,16 +201,95 @@ io.on('connection', (socket) => {
     
     senderSocket.join(gameId);
     recipientSocket.join(gameId);
+    console.log(`[ACCEPT_INVITE] Sockets for ${sender.username} and ${recipient.username} joined room ${gameId}`);
 
-    const gameStartPayload = {
+
+    // Store the game in activeGames to track it
+    activeGames[gameId] = {
       gameId,
-      players: [sender, recipient]
+      players: [sender, recipient],
+      sockets: [sender.id, recipient.id],
+      status: 'navigating', // Players are being sent to the game screen
+      readyPlayers: [], // To track clients that have loaded the game screen
     };
+    console.log(`[ACCEPT_INVITE] Active game created for ${gameId}`);
 
-    io.to(gameId).emit('server:game-starting', gameStartPayload);
+    // 3. Tell both clients to navigate to the game screen.
+    const navigationPayload = { gameId, players: [sender, recipient] };
+    console.log(`[ACCEPT_INVITE] Emitting 'server:navigate-to-game' to room ${gameId}`);
+    io.to(gameId).emit('server:navigate-to-game', navigationPayload);
 
     io.emit('update-player-list', Object.values(onlinePlayers));
-    console.log(`Game starting between ${sender.username} and ${recipient.username} in room ${gameId}`);
+    console.log(`[ACCEPT_INVITE] Flow completed for ${gameId}.`);
+  });
+
+  socket.on('client:game-state-initialized', ({ gameId, gameState }) => {
+    console.log(`[GAME_INIT] Received from host for game ${gameId}`);
+    const game = activeGames[gameId];
+    if (!game || game.status !== 'initializing') {
+      console.error(`[GAME_INIT] Error: Game ${gameId} not found or not in 'initializing' state.`);
+      socket.emit('server:error', { message: 'Cannot initialize game state. Game not found or already started.' });
+      return;
+    }
+
+    // The client sends the full state, including player hands.
+    // We trust this as the source of truth.
+    game.gameState = gameState;
+    game.status = 'running';
+    console.log(`[GAME_INIT] Game state stored for ${gameId}. Status -> 'running'.`);
+
+    // Broadcast the complete, initial game state to everyone in the room.
+    console.log(`[GAME_INIT] Broadcasting 'game-update' to room ${gameId}.`);
+    io.to(gameId).emit('game-update', game.gameState);
+  });
+
+  socket.on('client:player-ready', ({ gameId }) => {
+    const game = activeGames[gameId];
+    if (!game) {
+      console.error(`[PLAYER_READY] Error: Game not found for gameId: ${gameId}`);
+      return;
+    }
+
+    console.log(`[PLAYER_READY] Received from ${socket.username} for game ${gameId}`);
+
+    // Add player to the ready list if they aren't already on it
+    if (!game.readyPlayers.includes(socket.id)) {
+      game.readyPlayers.push(socket.id);
+    }
+
+    // If both players are now ready, start the initialization process
+    if (game.readyPlayers.length === 2) {
+      console.log(`[PLAYER_READY] Both players are ready for game ${gameId}. Initializing...`);
+      game.status = 'initializing';
+
+      // The recipient of the invite is the host. They were the second player in the initial array.
+      const hostId = game.sockets[1];
+      const otherId = game.sockets[0];
+      
+      const hostSocket = io.sockets.sockets.get(hostId);
+      const otherSocket = io.sockets.sockets.get(otherId);
+      const hostUser = game.players.find(p => p.id === hostId);
+
+      if (!hostSocket || !otherSocket || !hostUser) {
+        console.error(`[PLAYER_READY] Error: Could not find sockets or user for game ${gameId}`);
+        return;
+      }
+
+      // 1. Tell the host to initialize the game.
+      console.log(`[PLAYER_READY] Emitting 'server:initialize-game' to host ${hostUser.username}`);
+      hostSocket.emit('server:initialize-game', {
+        gameId,
+        players: game.players,
+        hostId: hostId,
+      });
+
+      // 2. Tell the other player to wait.
+      console.log(`[PLAYER_READY] Emitting 'server:waiting-for-initialization' to non-host ${otherSocket.username}`);
+      otherSocket.emit('server:waiting-for-initialization', {
+        gameId,
+        hostUsername: hostUser.username,
+      });
+    }
   });
 
   // Handle joining an existing game room
@@ -237,7 +316,8 @@ io.on('connection', (socket) => {
       game.players.push({
         id: socket.id,
         username: socket.username,
-        status: 'connected'
+        status: 'connected',
+        hand: [] // Initialize with empty hand
       });
     }
 

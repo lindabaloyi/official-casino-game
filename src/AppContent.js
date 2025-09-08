@@ -52,19 +52,17 @@ const AppContent = () => {
     if (!socket) return;
 
     const onGameStart = (data) => {
-      console.log('AppContent: Game starting with data:', data);
+      console.log("[NAVIGATE_TO_GAME] Received 'server:navigate-to-game'. Navigating to game screen with data:", data);
       setGameMode('online');
       setGameData(data);
       setScreen('game');
     };
 
-    // Only set up listeners if we're expecting online events
-    if (screen === 'lobby' || gameMode === 'online') {
-      socket.on('server:game-starting', onGameStart);
-    }
+    // Always listen for the navigation event from the server
+    socket.on('server:navigate-to-game', onGameStart);
 
     return () => {
-      socket.off('server:game-starting', onGameStart);
+      socket.off('server:navigate-to-game', onGameStart);
     };
   }, [socket, screen, gameMode]);
 

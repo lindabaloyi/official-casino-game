@@ -91,51 +91,51 @@ const TableCardsSection = React.memo(({ tableCards, onDropOnCard, currentPlayer,
   </section>
 ));
 
-const PlayerHandsSection = React.memo(({ playerHands, currentPlayer, gameMode, currentPlayerId, players }) => (
-  <section
-    className="player-hands-section"
-    aria-label="Player Hands"
-  >
-    {(Array.isArray(playerHands) ? playerHands : [[], []]).map((hand, index) => {
-      // In online mode, filter hand visibility based on current player
-      let displayHand = hand;
-      let playerLabel = `Player ${index + 1}`;
+const PlayerHandsSection = React.memo(({ playerHands, currentPlayer, gameMode, currentPlayerId, players }) => {
+  const hands = Array.isArray(playerHands) ? playerHands : [[], []];
+  // Always render the current player first, then the opponent.
+  const displayOrder = [currentPlayer, 1 - currentPlayer];
 
-      if (gameMode === 'online' && Array.isArray(players) && players[index]) {
-        const player = players[index];
-        playerLabel = player.username || `Player ${index + 1}`;
+  return (
+    <section className="player-hands-section" aria-label="Player Hands">
+      {displayOrder.map((playerIndex, i) => {
+        const hand = hands[playerIndex] || [];
+        const isTurn = playerIndex === currentPlayer;
 
-        // Only show hand if this is the current player's hand
-        if (player.id !== currentPlayerId) {
-          displayHand = []; // Hide opponent's hand
+        let playerLabel = `Player ${playerIndex + 1}`;
+        if (gameMode === 'online' && Array.isArray(players) && players[playerIndex]) {
+          playerLabel = players[playerIndex].username || `Player ${playerIndex + 1}`;
         }
-      }
 
-      return (
-        <div
-          key={index}
-          className={`player-area ${currentPlayer === index ? 'current-player-area' : 'opponent-area'}`}>
-          <h3>
-            {playerLabel}
-          </h3>
-          {gameMode === 'online' && players && players[index] && players[index].id !== currentPlayerId ? (
-            <div className="opponent-hand-placeholder">
-              <div className="card-back-placeholder">
-                <span>Opponent's Hand</span>
+        // The first player in the order is the one whose turn it is.
+        const isFirstRendered = i === 0;
+
+        return (
+          <div
+            key={playerIndex}
+            className={`player-area ${isTurn ? 'current-player-area' : 'opponent-area'}`}>
+            <h3>{playerLabel}</h3>
+            {/* In online mode, the second rendered player is the opponent and gets a placeholder. */}
+            {gameMode === 'online' && !isFirstRendered ? (
+              <div className="opponent-hand-placeholder">
+                <div className="card-back-placeholder">
+                  <span>Opponent's Hand</span>
+                </div>
               </div>
-            </div>
-          ) : (
-            <PlayerHand
-              player={index}
-              cards={displayHand}
-              isCurrent={currentPlayer === index}
-            />
-          )}
-        </div>
-      );
-    })}
-  </section>
-));
+            ) : (
+              <PlayerHand
+                player={playerIndex}
+                cards={hand}
+                isCurrent={isTurn}
+                gameMode={gameMode}
+              />
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+});
 
 const GameOverSection = React.memo(({ winner, scoreDetails, onRestart }) => {
   if (!scoreDetails) {
@@ -204,10 +204,24 @@ function GameBoard({ onRestart, gameMode, currentPlayerId, gameState: externalGa
   // Use external game state for online mode, local for offline
   const gameState = gameMode === 'online' ? externalGameState : localGameState;
 
+  // Normalize the playerHands structure, as it differs between local and online state
+  const normalizedPlayerHands = React.useMemo(() => {
+    if (!gameState) return [[], []];
+    if (gameMode === 'online' && Array.isArray(gameState.players)) {
+      // Online state: { players: [{ hand: [...] }, ...] }
+      return gameState.players.map(p => p.hand || []);
+    }
+    if (Array.isArray(gameState.playerHands)) {
+      // Local state: { playerHands: [[...], [...]] }
+      return gameState.playerHands;
+    }
+    return [[], []];
+  }, [gameState, gameMode]);
+
   // Provide defaults for missing properties in online mode
   const safeGameState = {
     ...gameState,
-    playerHands: gameState?.playerHands || [[], []],
+    playerHands: normalizedPlayerHands,
     tableCards: gameState?.tableCards || [],
     playerCaptures: gameState?.playerCaptures || [[], []],
     currentPlayer: gameState?.currentPlayer ?? 0,
@@ -229,7 +243,7 @@ function GameBoard({ onRestart, gameMode, currentPlayerId, gameState: externalGa
       }, 4000); // Show animation for 4 seconds
       return () => clearTimeout(timer);
     }
-  }, [safeGameState.round]); // Remove showRoundTransition from dependencies
+  }, [safeGameState.round]);
 
   const [{ isOver, canDrop }, drop] = useDrop(
     () => ({
