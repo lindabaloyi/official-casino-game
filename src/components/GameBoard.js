@@ -177,7 +177,6 @@ function GameBoard({ onRestart }) {
         if (monitor.didDrop()) {
           return;
         }
-        console.log(`Trail drop - Player: ${item.player}, Card: ${item.card.rank}`);
         if (item.source === 'opponentCapture') {
           handleStageOpponentCardAction(item);
         } else if (item.source === 'hand') {

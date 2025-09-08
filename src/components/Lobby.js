@@ -27,7 +27,6 @@ const Lobby = ({ onInviteReceived }) => {
 
     // Handler for the socket event
     const handleInviteEvent = (data) => {
-      console.log('Invite received:', data);
       onInviteReceived(data); // Call the function from props
     };
 

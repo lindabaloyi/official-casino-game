@@ -22,9 +22,7 @@ const AppContent = () => {
   };
 
   const handleInviteReceived = (data) => {
-    console.log('AppContent: handleInviteReceived - data:', data);
     setInviteDetails(data);
-    console.log('AppContent: inviteDetails set, modal should appear.');
   };
 
   const handleModalAction = (action) => {
@@ -52,18 +50,19 @@ const AppContent = () => {
     if (!socket) return;
 
     const onGameStart = (data) => {
-      console.log('Game is starting:', data);
       setGameMode('online');
       setScreen('game');
     };
 
-    // Listener for when the server confirms the game is starting
-    socket.on('server:game-starting', onGameStart);
+    // Only set up listeners if we're expecting online events
+    if (screen === 'lobby' || gameMode === 'online') {
+      socket.on('server:game-starting', onGameStart);
+    }
 
     return () => {
       socket.off('server:game-starting', onGameStart);
     };
-  }, [socket]);
+  }, [socket, screen, gameMode]);
 
 
   const modalInfo = inviteDetails ? {
@@ -74,6 +73,7 @@ const AppContent = () => {
       { label: 'Decline', value: 'decline' },
     ]
   } : null;
+
 
   return (
     <>
