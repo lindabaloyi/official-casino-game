@@ -16,6 +16,7 @@ const io = new Server(server, {
 });
 
 const onlinePlayers = {};
+const activeGames = {}; // Track active game rooms
 
 const PORT = process.env.PORT || 3001;
 
@@ -210,6 +211,110 @@ io.on('connection', (socket) => {
 
     io.emit('update-player-list', Object.values(onlinePlayers));
     console.log(`Game starting between ${sender.username} and ${recipient.username} in room ${gameId}`);
+  });
+
+  // Handle joining an existing game room
+  socket.on('join-game', ({ gameId }) => {
+    console.log(`Player ${socket.username} (${socket.id}) joining game ${gameId}`);
+
+    // Check if game exists
+    if (!activeGames[gameId]) {
+      console.log(`Game ${gameId} not found, creating basic game state`);
+      // Create basic game state for now
+      activeGames[gameId] = {
+        gameId,
+        players: [],
+        status: 'waiting',
+        created: new Date().toISOString()
+      };
+    }
+
+    const game = activeGames[gameId];
+
+    // Add player to game if not already present
+    const existingPlayerIndex = game.players.findIndex(p => p.id === socket.id);
+    if (existingPlayerIndex === -1) {
+      game.players.push({
+        id: socket.id,
+        username: socket.username,
+        status: 'connected'
+      });
+    }
+
+    // Join the socket room
+    socket.join(gameId);
+
+    // Send current game state to the joining player
+    socket.emit('game-update', {
+      gameId: game.gameId,
+      players: game.players,
+      status: game.status,
+      playerCount: game.players.length
+    });
+
+    // Notify other players in the room
+    socket.to(gameId).emit('player-joined', {
+      player: {
+        id: socket.id,
+        username: socket.username,
+        status: 'connected'
+      },
+      totalPlayers: game.players.length
+    });
+
+    console.log(`Player ${socket.username} successfully joined game ${gameId}. Total players: ${game.players.length}`);
+  });
+
+  // Handle card play events
+  socket.on('play-card', ({ card, gameId }) => {
+    console.log(`Player ${socket.username} playing card:`, card, `in game ${gameId}`);
+
+    const game = activeGames[gameId];
+    if (!game) {
+      console.log(`Game ${gameId} not found`);
+      socket.emit('game-error', { message: 'Game not found' });
+      return;
+    }
+
+    // Find the player making the move
+    const player = game.players.find(p => p.id === socket.id);
+    if (!player) {
+      console.log(`Player ${socket.username} not found in game ${gameId}`);
+      socket.emit('game-error', { message: 'Player not in game' });
+      return;
+    }
+
+    // Basic validation - check if it's player's turn
+    if (game.currentTurn !== socket.id) {
+      console.log(`Not ${socket.username}'s turn in game ${gameId}`);
+      socket.emit('game-error', { message: 'Not your turn' });
+      return;
+    }
+
+    // For now, just acknowledge the move and switch turns
+    console.log(`${socket.username} played ${card.rank} of ${card.suit}`);
+
+    // Switch turns to the other player
+    const otherPlayer = game.players.find(p => p.id !== socket.id);
+    if (otherPlayer) {
+      game.currentTurn = otherPlayer.id;
+    }
+
+    // Broadcast the updated game state to all players in the room
+    io.to(gameId).emit('game-update', {
+      gameId: game.gameId,
+      players: game.players,
+      status: game.status,
+      currentTurn: game.currentTurn,
+      lastMove: {
+        playerId: socket.id,
+        playerName: socket.username,
+        card: card,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    console.log(`Turn switched to ${otherPlayer?.username || 'unknown'} in game ${gameId}`);
   });
 });
 

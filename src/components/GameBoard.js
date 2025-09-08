@@ -23,6 +23,23 @@ const StatusSection = React.memo(({ round }) => (
 ));
 
 const CapturedCardsSection = React.memo(({ playerCaptures, currentPlayer }) => {
+  // Handle undefined playerCaptures (for online mode before game starts)
+  if (!playerCaptures) {
+    return (
+      <section
+        className="captured-cards-positioned"
+        aria-label="Captured Cards"
+      >
+        {[0, 1].map(playerIndex => (
+          <div key={playerIndex} className="captured-cards">
+            <h3>Player {playerIndex + 1} Captures</h3>
+            <div className="cards-container empty"><p>No Cards.</p></div>
+          </div>
+        ))}
+      </section>
+    );
+  }
+
   // Always render opponent first, then current player for strategic visibility.
   const displayOrder = [1 - currentPlayer, currentPlayer];
 
@@ -64,29 +81,59 @@ const TableCardsSection = React.memo(({ tableCards, onDropOnCard, currentPlayer,
     aria-label="Table Cards"
     role="main"
   >
-    <TableCards cards={tableCards} onDropOnCard={onDropOnCard} currentPlayer={currentPlayer} onCancelStack={onCancelStack} onConfirmStack={onConfirmStack} />
+    <TableCards
+      cards={Array.isArray(tableCards) ? tableCards : []}
+      onDropOnCard={onDropOnCard}
+      currentPlayer={currentPlayer}
+      onCancelStack={onCancelStack}
+      onConfirmStack={onConfirmStack}
+    />
   </section>
 ));
 
-const PlayerHandsSection = React.memo(({ playerHands, currentPlayer }) => (
+const PlayerHandsSection = React.memo(({ playerHands, currentPlayer, gameMode, currentPlayerId, players }) => (
   <section
     className="player-hands-section"
     aria-label="Player Hands"
   >
-    {playerHands.map((hand, index) => (
-      <div
-        key={index}
-        className={`player-area ${currentPlayer === index ? 'current-player-area' : 'opponent-area'}`}>
-        <h3>
-          Player {index + 1}
-        </h3>
-        <PlayerHand
-          player={index}
-          cards={hand}
-          isCurrent={currentPlayer === index}
-        />
-      </div>
-    ))}
+    {(Array.isArray(playerHands) ? playerHands : [[], []]).map((hand, index) => {
+      // In online mode, filter hand visibility based on current player
+      let displayHand = hand;
+      let playerLabel = `Player ${index + 1}`;
+
+      if (gameMode === 'online' && Array.isArray(players) && players[index]) {
+        const player = players[index];
+        playerLabel = player.username || `Player ${index + 1}`;
+
+        // Only show hand if this is the current player's hand
+        if (player.id !== currentPlayerId) {
+          displayHand = []; // Hide opponent's hand
+        }
+      }
+
+      return (
+        <div
+          key={index}
+          className={`player-area ${currentPlayer === index ? 'current-player-area' : 'opponent-area'}`}>
+          <h3>
+            {playerLabel}
+          </h3>
+          {gameMode === 'online' && players && players[index] && players[index].id !== currentPlayerId ? (
+            <div className="opponent-hand-placeholder">
+              <div className="card-back-placeholder">
+                <span>Opponent's Hand</span>
+              </div>
+            </div>
+          ) : (
+            <PlayerHand
+              player={index}
+              cards={displayHand}
+              isCurrent={currentPlayer === index}
+            />
+          )}
+        </div>
+      );
+    })}
   </section>
 ));
 
@@ -141,9 +188,9 @@ const GameOverSection = React.memo(({ winner, scoreDetails, onRestart }) => {
   );
 });
 
-function GameBoard({ onRestart }) {
+function GameBoard({ onRestart, gameMode, currentPlayerId, gameState: externalGameState }) {
   const {
-    gameState,
+    gameState: localGameState,
     modalInfo,
     handleTrailCard,
     handleDropOnCard,
@@ -154,6 +201,20 @@ function GameBoard({ onRestart }) {
     handleConfirmStagingStackAction,
   } = useGameActions();
 
+  // Use external game state for online mode, local for offline
+  const gameState = gameMode === 'online' ? externalGameState : localGameState;
+
+  // Provide defaults for missing properties in online mode
+  const safeGameState = {
+    ...gameState,
+    playerHands: gameState?.playerHands || [[], []],
+    tableCards: gameState?.tableCards || [],
+    playerCaptures: gameState?.playerCaptures || [[], []],
+    currentPlayer: gameState?.currentPlayer ?? 0,
+    round: gameState?.round ?? 1,
+    gameOver: gameState?.gameOver ?? false
+  };
+
   const { showInfo } = useNotifications();
 
   // State for round transition animation
@@ -161,14 +222,14 @@ function GameBoard({ onRestart }) {
 
   // Effect to show round transition animation when round changes to 2
   React.useEffect(() => {
-    if (gameState.round === 2 && !showRoundTransition) {
+    if (safeGameState.round === 2 && !showRoundTransition) {
       setShowRoundTransition(true);
       const timer = setTimeout(() => {
         setShowRoundTransition(false);
       }, 4000); // Show animation for 4 seconds
       return () => clearTimeout(timer);
     }
-  }, [gameState.round]); // Remove showRoundTransition from dependencies
+  }, [safeGameState.round]); // Remove showRoundTransition from dependencies
 
   const [{ isOver, canDrop }, drop] = useDrop(
     () => ({
@@ -213,20 +274,23 @@ function GameBoard({ onRestart }) {
       aria-label="Casino Card Game"
       tabIndex="-1"
     >
-      <StatusSection round={gameState.round} />
+      <StatusSection round={safeGameState.round} />
       <div className="game-area">
-        <CapturedCardsSection playerCaptures={gameState.playerCaptures} currentPlayer={gameState.currentPlayer} />
+        <CapturedCardsSection playerCaptures={safeGameState.playerCaptures} currentPlayer={safeGameState.currentPlayer} />
         <TableCardsSection
-          tableCards={gameState.tableCards}
+          tableCards={safeGameState.tableCards}
           onDropOnCard={handleDropOnCard}
-          currentPlayer={gameState.currentPlayer}
+          currentPlayer={safeGameState.currentPlayer}
           onCancelStack={handleCancelStagingStackAction}
           onConfirmStack={handleConfirmStagingStackAction}
         />
       </div>
       <PlayerHandsSection
-        playerHands={gameState.playerHands}
-        currentPlayer={gameState.currentPlayer}
+        playerHands={safeGameState.playerHands}
+        currentPlayer={safeGameState.currentPlayer}
+        gameMode={gameMode}
+        currentPlayerId={currentPlayerId}
+        players={safeGameState.players}
       />
 
       {modalInfo && (
@@ -246,10 +310,10 @@ function GameBoard({ onRestart }) {
         </div>
       )}
 
-      {gameState.gameOver && (
+      {safeGameState.gameOver && (
         <GameOverSection
-          winner={gameState.winner}
-          scoreDetails={gameState.scoreDetails}
+          winner={safeGameState.winner}
+          scoreDetails={safeGameState.scoreDetails}
           onRestart={onRestart}
         />
       )}

@@ -3,6 +3,7 @@ import GameBoard from './components/GameBoard';
 import StartMenu from './components/StartMenu';
 import Lobby from './components/Lobby';
 import ActionModal from './components/ActionModal';
+import OnlineGameMode from './components/OnlineGameMode';
 import { SocketContext } from './contexts/SocketContext';
 
 const AppContent = () => {
@@ -11,6 +12,7 @@ const AppContent = () => {
   const [screen, setScreen] = useState('start'); // 'start', 'lobby', 'game'
   const [gameMode, setGameMode] = useState(null); // 'human', 'cpu', 'online'
   const [inviteDetails, setInviteDetails] = useState(null);
+  const [gameData, setGameData] = useState(null);
 
   const handlePlay = (mode) => {
     if (mode === 'online') {
@@ -50,7 +52,9 @@ const AppContent = () => {
     if (!socket) return;
 
     const onGameStart = (data) => {
+      console.log('AppContent: Game starting with data:', data);
       setGameMode('online');
+      setGameData(data);
       setScreen('game');
     };
 
@@ -80,9 +84,11 @@ const AppContent = () => {
       {screen === 'start' && <StartMenu onPlay={handlePlay} />}
       {screen === 'lobby' && <Lobby onInviteReceived={handleInviteReceived} />}
       
-      {screen === 'game' && (
+      {screen === 'game' && gameMode === 'online' && gameData ? (
+        <OnlineGameMode gameData={gameData} />
+      ) : screen === 'game' ? (
         <GameBoard key={key} onRestart={handleRestart} gameMode={gameMode} />
-      )}
+      ) : null}
 
       {modalInfo && (
           <ActionModal
