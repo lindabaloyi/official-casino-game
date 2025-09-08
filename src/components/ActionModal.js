@@ -11,20 +11,18 @@ const ActionModal = ({ modalInfo, onAction, onCancel }) => {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-overlay">
       <div className="modal-content">
         <h3>{title}</h3>
         <p>{message}</p>
         <div className="modal-actions">
           {actions.map((action, index) => (
-            <button key={index} onClick={() => onAction(action)}>
+            <button key={index} onClick={() => onAction(action.value)}>
               {action.label}
             </button>
           ))}
           <button onClick={onCancel}>Cancel</button>
         </div>
       </div>
-    </div>
     </div>
   );
 };
